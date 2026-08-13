@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.IdleFavoriteMapper">
+    
+    <resultMap type="IdleFavorite" id="IdleFavoriteResult">
+        <result property="favoriteId"    column="favorite_id"    />
+        <result property="userId"    column="user_id"    />
+        <result property="goodsId"    column="goods_id"    />
+        <result property="createTime"    column="create_time"    />
+    </resultMap>
+
+    <resultMap type="IdleFavorite" id="FavoriteGoodsResult" extends="IdleFavoriteResult">
+        <result property="goodsName"    column="goods_name"    />
+        <result property="coverImage"    column="cover_image"    />
+        <result property="price"    column="price"    />
+        <result property="qualityLevel"    column="quality_level"    />
+        <result property="goodsStatus"    column="goods_status"    />
+    </resultMap>
+
+    <sql id="selectIdleFavoriteVo">
+        select favorite_id, user_id, goods_id, create_time from idle_favorite
+    </sql>
+
+    <select id="selectIdleFavoriteList" parameterType="IdleFavorite" resultMap="FavoriteGoodsResult">
+        select f.favorite_id, f.user_id, f.goods_id, f.create_time,
+               g.goods_name, g.cover_image, g.price, g.quality_level, g.goods_status
+        from idle_favorite f
+        left join idle_goods g on f.goods_id = g.goods_id
+        <where>  
+            <if test="userId != null "> and f.user_id = #{userId}</if>
+            <if test="goodsId != null "> and f.goods_id = #{goodsId}</if>
+            <if test="goodsName != null and goodsName != ''"> and g.goods_name like concat('%', #{goodsName}, '%')</if>
+        </where>
+        order by f.create_time desc
+    </select>
+    
+    <select id="selectIdleFavoriteByFavoriteId" parameterType="Long" resultMap="IdleFavoriteResult">
+        <include refid="selectIdleFavoriteVo"/>
+        where favorite_id = #{favoriteId}
+    </select>
+
+    <select id="selectFavoriteGoodsList" resultMap="FavoriteGoodsResult">
+        select f.favorite_id, f.user_id, f.goods_id, f.create_time,
+               g.goods_name, g.cover_image, g.price, g.quality_level, g.goods_status
+        from idle_favorite f
+        left join idle_goods g on f.goods_id = g.goods_id
+        where f.user_id = #{userId}
+        order by f.create_time desc
+    </select>
+
+    <insert id="insertIdleFavorite" parameterType="IdleFavorite" useGeneratedKeys="true" keyProperty="favoriteId">
+        insert into idle_favorite
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="userId != null">user_id,</if>
+            <if test="goodsId != null">goods_id,</if>
+            <if test="createTime != null">create_time,</if>
+         </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="userId != null">#{userId},</if>
+            <if test="goodsId != null">#{goodsId},</if>
+            <if test="createTime != null">#{createTime},</if>
+         </trim>
+    </insert>
+
+    <update id="updateIdleFavorite" parameterType="IdleFavorite">
+        update idle_favorite
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="userId != null">user_id = #{userId},</if>
+            <if test="goodsId != null">goods_id = #{goodsId},</if>
+            <if test="createTime != null">create_time = #{createTime},</if>
+        </trim>
+        where favorite_id = #{favoriteId}
+    </update>
+
+    <delete id="deleteIdleFavoriteByFavoriteId" parameterType="Long">
+        delete from idle_favorite where favorite_id = #{favoriteId}
+    </delete>
+
+    <delete id="deleteIdleFavoriteByFavoriteIds" parameterType="String">
+        delete from idle_favorite where favorite_id in
+        <foreach item="favoriteId" collection="array" open="(" separator="," close=")">
+            #{favoriteId}
+        </foreach>
+    </delete>
+
+    <select id="checkFavorite" resultType="int">
+        select count(*) from idle_favorite where user_id = #{userId} and goods_id = #{goodsId}
+    </select>
+
+    <delete id="deleteFavoriteByUserAndGoods">
+        delete from idle_favorite where user_id = #{userId} and goods_id = #{goodsId}
+    </delete>
+
+    <select id="countFavoritesByUserId" parameterType="Long" resultType="int">
+        select count(*) from idle_favorite where user_id = #{userId}
+    </select>
+</mapper>

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.ReviewMapper">
+
+    <resultMap type="Review" id="ReviewResult">
+        <id property="id" column="id"/>
+        <result property="orderId" column="order_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="bookId" column="book_id"/>
+        <result property="rating" column="rating"/>
+        <result property="content" column="content"/>
+        <result property="images" column="images"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <select id="selectReviewList" parameterType="Review" resultMap="ReviewResult">
+        select * from review
+        <where>
+            <if test="bookId != null">book_id = #{bookId}</if>
+            <if test="userId != null">and user_id = #{userId}</if>
+        </where>
+        order by create_time desc
+    </select>
+
+    <select id="selectReviewById" parameterType="Long" resultMap="ReviewResult">
+        select * from review where id = #{id}
+    </select>
+
+    <select id="selectReviewByOrderId" parameterType="Long" resultMap="ReviewResult">
+        select * from review where order_id = #{orderId}
+    </select>
+
+    <insert id="insertReview" parameterType="Review" useGeneratedKeys="true" keyProperty="id">
+        insert into review(order_id, user_id, book_id, rating, content, images)
+        values(#{orderId}, #{userId}, #{bookId}, #{rating}, #{content}, #{images})
+    </insert>
+
+    <update id="updateReview" parameterType="Review">
+        update review set
+        <if test="rating != null">rating = #{rating},</if>
+        <if test="content != null">content = #{content},</if>
+        <if test="images != null">images = #{images},</if>
+        update_time = now()
+        where id = #{id}
+    </update>
+
+    <delete id="deleteReviewById" parameterType="Long">
+        delete from review where id = #{id}
+    </delete>
+
+</mapper>

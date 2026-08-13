@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.AddressMapper">
+
+    <resultMap type="Address" id="AddressResult">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="name" column="name"/>
+        <result property="phone" column="phone"/>
+        <result property="province" column="province"/>
+        <result property="city" column="city"/>
+        <result property="district" column="district"/>
+        <result property="detail" column="detail"/>
+        <result property="isDefault" column="is_default"/>
+        <result property="status" column="status"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <select id="selectAddressList" parameterType="Long" resultMap="AddressResult">
+        select * from address where user_id = #{userId} and status = 1 order by is_default desc, create_time desc
+    </select>
+
+    <select id="selectAddressById" parameterType="Long" resultMap="AddressResult">
+        select * from address where id = #{id}
+    </select>
+
+    <select id="selectDefaultAddress" parameterType="Long" resultMap="AddressResult">
+        select * from address where user_id = #{userId} and is_default = 1 and status = 1
+    </select>
+
+    <insert id="insertAddress" parameterType="Address" useGeneratedKeys="true" keyProperty="id">
+        insert into address(user_id, name, phone, province, city, district, detail, is_default, status)
+        values(#{userId}, #{name}, #{phone}, #{province}, #{city}, #{district}, #{detail}, #{isDefault}, #{status})
+    </insert>
+
+    <update id="updateAddress" parameterType="Address">
+        update address set
+        <if test="name != null">name = #{name},</if>
+        <if test="phone != null">phone = #{phone},</if>
+        <if test="province != null">province = #{province},</if>
+        <if test="city != null">city = #{city},</if>
+        <if test="district != null">district = #{district},</if>
+        <if test="detail != null">detail = #{detail},</if>
+        <if test="isDefault != null">is_default = #{isDefault},</if>
+        <if test="status != null">status = #{status},</if>
+        update_time = now()
+        where id = #{id}
+    </update>
+
+    <update id="deleteAddressById" parameterType="Long">
+        update address set status = 0 where id = #{id}
+    </update>
+
+    <update id="clearDefault" parameterType="Long">
+        update address set is_default = 0 where user_id = #{userId}
+    </update>
+
+</mapper>

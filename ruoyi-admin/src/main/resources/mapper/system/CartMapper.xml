@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.CartMapper">
+
+    <resultMap type="Cart" id="CartResult">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="bookId" column="book_id"/>
+        <result property="quantity" column="quantity"/>
+        <result property="bookTitle" column="book_title"/>
+        <result property="coverImage" column="cover_image"/>
+        <result property="price" column="price"/>
+        <result property="bookCondition" column="book_condition"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <select id="selectCartList" parameterType="Long" resultMap="CartResult">
+        select c.*, b.title as book_title, b.cover_image, b.price, b.condition as book_condition
+        from cart c left join book b on c.book_id = b.id
+        where c.user_id = #{userId} order by c.create_time desc
+    </select>
+
+    <select id="selectCartById" parameterType="Long" resultMap="CartResult">
+        select c.*, b.title as book_title, b.cover_image, b.price, b.condition as book_condition
+        from cart c left join book b on c.book_id = b.id
+        where c.id = #{id}
+    </select>
+
+    <select id="selectCartByUserBook" resultMap="CartResult">
+        select * from cart where user_id = #{param1} and book_id = #{param2}
+    </select>
+
+    <insert id="insertCart" parameterType="Cart" useGeneratedKeys="true" keyProperty="id">
+        insert into cart(user_id, book_id, quantity) values(#{userId}, #{bookId}, #{quantity})
+    </insert>
+
+    <update id="updateCart" parameterType="Cart">
+        update cart set quantity = #{quantity}, update_time = now() where id = #{id}
+    </update>
+
+    <delete id="deleteCartById" parameterType="Long">
+        delete from cart where id = #{id}
+    </delete>
+
+    <delete id="deleteCartByUserId" parameterType="Long">
+        delete from cart where user_id = #{userId}
+    </delete>
+
+    <select id="countCart" parameterType="Long" resultType="Integer">
+        select count(*) from cart where user_id = #{userId}
+    </select>
+
+</mapper>

@@ -1,0 +1,120 @@
+﻿<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.BookMapper">
+    <resultMap type="Book" id="BookResult">
+        <id property="id" column="id"/>
+        <result property="sellerId" column="seller_id"/>
+        <result property="sellerName" column="seller_name"/>
+        <result property="sellerAvatar" column="seller_avatar"/>
+        <result property="sellerRating" column="seller_rating"/>
+        <result property="isbn" column="isbn"/>
+        <result property="title" column="title"/>
+        <result property="author" column="author"/>
+        <result property="publisher" column="publisher"/>
+        <result property="edition" column="edition"/>
+        <result property="publishYear" column="publish_year"/>
+        <result property="originalPrice" column="original_price"/>
+        <result property="coverImage" column="cover_image"/>
+        <result property="condition" column="condition"/>
+        <result property="conditionDesc" column="condition_desc"/>
+        <result property="images" column="images"/>
+        <result property="price" column="price"/>
+        <result property="categoryId" column="category_id"/>
+        <result property="categoryName" column="category_name"/>
+        <result property="courseId" column="course_id"/>
+        <result property="courseName" column="course_name"/>
+        <result property="university" column="university"/>
+        <result property="stock" column="stock"/>
+        <result property="status" column="status"/>
+        <result property="description" column="description"/>
+        <result property="sales" column="sales"/>
+        <result property="views" column="views"/>
+        <result property="favorites" column="favorites"/>
+        <result property="priceEvaluation" column="price_evaluation"/>
+        <result property="suggestedPriceMin" column="suggested_price_min"/>
+        <result property="suggestedPriceMax" column="suggested_price_max"/>
+        <result property="isFavorited" column="is_favorited"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+    <select id="selectBookList" parameterType="Book" resultMap="BookResult">
+        select * from book
+        <where>
+            <if test="status != null">status = #{status}</if>
+            <if test="keyword != null and keyword != ''">
+                and (title like concat('%', #{keyword}, '%') or author like concat('%', #{keyword}, '%') or isbn like concat('%', #{keyword}, '%'))
+            </if>
+            <if test="categoryId != null">and category_id = #{categoryId}</if>
+            <if test="condition != null">and condition = #{condition}</if>
+            <if test="minPrice != null">and price &gt;= #{minPrice}</if>
+            <if test="maxPrice != null">and price &lt;= #{maxPrice}</if>
+            <if test="university != null and university != ''">and university = #{university}</if>
+        </where>
+        order by create_time desc
+    </select>
+    <select id="selectBookById" parameterType="Long" resultMap="BookResult">
+        select * from book where id = #{id}
+    </select>
+    <insert id="insertBook" parameterType="Book" useGeneratedKeys="true" keyProperty="id">
+        insert into book(seller_id, seller_name, seller_avatar, seller_rating, isbn, title, author, publisher,
+                         edition, publish_year, original_price, cover_image, condition, condition_desc, images,
+                         price, category_id, category_name, course_id, course_name, university, stock, status,
+                         description, sales, views, favorites, price_evaluation, suggested_price_min, suggested_price_max)
+        values(#{sellerId}, #{sellerName}, #{sellerAvatar}, #{sellerRating}, #{isbn}, #{title}, #{author}, #{publisher},
+               #{edition}, #{publishYear}, #{originalPrice}, #{coverImage}, #{condition}, #{conditionDesc}, #{images},
+               #{price}, #{categoryId}, #{categoryName}, #{courseId}, #{courseName}, #{university}, #{stock}, #{status},
+               #{description}, #{sales}, #{views}, #{favorites}, #{priceEvaluation}, #{suggestedPriceMin}, #{suggestedPriceMax})
+    </insert>
+    <update id="updateBook" parameterType="Book">
+        update book set
+        <if test="sellerName != null">seller_name = #{sellerName},</if>
+        <if test="isbn != null">isbn = #{isbn},</if>
+        <if test="title != null">title = #{title},</if>
+        <if test="author != null">author = #{author},</if>
+        <if test="publisher != null">publisher = #{publisher},</if>
+        <if test="edition != null">edition = #{edition},</if>
+        <if test="originalPrice != null">original_price = #{originalPrice},</if>
+        <if test="coverImage != null">cover_image = #{coverImage},</if>
+        <if test="condition != null">condition = #{condition},</if>
+        <if test="conditionDesc != null">condition_desc = #{conditionDesc},</if>
+        <if test="images != null">images = #{images},</if>
+        <if test="price != null">price = #{price},</if>
+        <if test="categoryId != null">category_id = #{categoryId},</if>
+        <if test="categoryName != null">category_name = #{categoryName},</if>
+        <if test="courseId != null">course_id = #{courseId},</if>
+        <if test="courseName != null">course_name = #{courseName},</if>
+        <if test="university != null">university = #{university},</if>
+        <if test="stock != null">stock = #{stock},</if>
+        <if test="status != null">status = #{status},</if>
+        <if test="description != null">description = #{description},</if>
+        <if test="priceEvaluation != null">price_evaluation = #{priceEvaluation},</if>
+        <if test="suggestedPriceMin != null">suggested_price_min = #{suggestedPriceMin},</if>
+        <if test="suggestedPriceMax != null">suggested_price_max = #{suggestedPriceMax},</if>
+        update_time = now()
+        where id = #{id}
+    </update>
+    <delete id="deleteBookById" parameterType="Long">
+        delete from book where id = #{id}
+    </delete>
+    <update id="updateBookStatus">
+        update book set status = #{param2}, update_time = now() where id = #{param1}
+    </update>
+    <update id="updateBookViews" parameterType="Long">
+        update book set views = views + 1 where id = #{id}
+    </update>
+    <update id="updateBookFavorites">
+        update book set favorites = favorites + #{param2} where id = #{param1}
+    </update>
+    <select id="selectHotBooks" resultMap="BookResult">
+        select * from book where status = 1 order by sales desc limit 10
+    </select>
+    <select id="selectRecommendBooks" resultMap="BookResult">
+        select * from book where status = 1 order by rand() limit 8
+    </select>
+    <select id="selectMyBooks" parameterType="Long" resultMap="BookResult">
+        select * from book where seller_id = #{sellerId} order by create_time desc
+    </select>
+    <select id="selectRelatedBooks" resultMap="BookResult">
+        select * from book where category_id = #{param1} and id != #{param2} and status = 1 limit 4
+    </select>
+</mapper>

@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.OrdersMapper">
+
+    <resultMap type="Orders" id="OrdersResult">
+        <id property="id" column="id"/>
+        <result property="orderNo" column="order_no"/>
+        <result property="buyerId" column="buyer_id"/>
+        <result property="buyerName" column="buyer_name"/>
+        <result property="buyerPhone" column="buyer_phone"/>
+        <result property="sellerId" column="seller_id"/>
+        <result property="sellerName" column="seller_name"/>
+        <result property="sellerAvatar" column="seller_avatar"/>
+        <result property="totalAmount" column="total_amount"/>
+        <result property="payAmount" column="pay_amount"/>
+        <result property="deliveryMethod" column="delivery_method"/>
+        <result property="address" column="address"/>
+        <result property="pickupPoint" column="pickup_point"/>
+        <result property="payMethod" column="pay_method"/>
+        <result property="status" column="status"/>
+        <result property="remark" column="remark"/>
+        <result property="logisticsNo" column="logistics_no"/>
+        <result property="createTime" column="create_time"/>
+        <result property="payTime" column="pay_time"/>
+        <result property="shipTime" column="ship_time"/>
+        <result property="completeTime" column="complete_time"/>
+        <result property="closeTime" column="close_time"/>
+        <result property="refundReason" column="refund_reason"/>
+        <result property="refundDescription" column="refund_description"/>
+        <result property="refundImages" column="refund_images"/>
+        <result property="refundTime" column="refund_time"/>
+    </resultMap>
+
+    <select id="selectOrdersList" parameterType="Orders" resultMap="OrdersResult">
+        select * from orders
+        <where>
+            <if test="buyerId != null">buyer_id = #{buyerId}</if>
+            <if test="sellerId != null">and seller_id = #{sellerId}</if>
+            <if test="status != null">and status = #{status}</if>
+            <if test="orderNo != null and orderNo != ''">and order_no like concat('%', #{orderNo}, '%')</if>
+        </where>
+        order by create_time desc
+    </select>
+
+    <select id="selectOrdersById" parameterType="Long" resultMap="OrdersResult">
+        select * from orders where id = #{id}
+    </select>
+
+    <select id="selectOrdersByOrderNo" parameterType="String" resultMap="OrdersResult">
+        select * from orders where order_no = #{orderNo}
+    </select>
+
+    <insert id="insertOrders" parameterType="Orders" useGeneratedKeys="true" keyProperty="id">
+        insert into orders(order_no, buyer_id, buyer_name, buyer_phone, seller_id, seller_name, seller_avatar,
+                          total_amount, pay_amount, delivery_method, address, pickup_point, pay_method, status,
+                          remark, logistics_no, pay_time, ship_time, complete_time, close_time, refund_reason,
+                          refund_description, refund_images, refund_time)
+        values(#{orderNo}, #{buyerId}, #{buyerName}, #{buyerPhone}, #{sellerId}, #{sellerName}, #{sellerAvatar},
+               #{totalAmount}, #{payAmount}, #{deliveryMethod}, #{address}, #{pickupPoint}, #{payMethod}, #{status},
+               #{remark}, #{logisticsNo}, #{payTime}, #{shipTime}, #{completeTime}, #{closeTime}, #{refundReason},
+               #{refundDescription}, #{refundImages}, #{refundTime})
+    </insert>
+
+    <update id="updateOrders" parameterType="Orders">
+        update orders set
+        <if test="buyerName != null">buyer_name = #{buyerName},</if>
+        <if test="buyerPhone != null">buyer_phone = #{buyerPhone},</if>
+        <if test="sellerName != null">seller_name = #{sellerName},</if>
+        <if test="totalAmount != null">total_amount = #{totalAmount},</if>
+        <if test="payAmount != null">pay_amount = #{payAmount},</if>
+        <if test="deliveryMethod != null">delivery_method = #{deliveryMethod},</if>
+        <if test="address != null">address = #{address},</if>
+        <if test="pickupPoint != null">pickup_point = #{pickupPoint},</if>
+        <if test="payMethod != null">pay_method = #{payMethod},</if>
+        <if test="status != null">status = #{status},</if>
+        <if test="remark != null">remark = #{remark},</if>
+        <if test="logisticsNo != null">logistics_no = #{logisticsNo},</if>
+        <if test="payTime != null">pay_time = #{payTime},</if>
+        <if test="shipTime != null">ship_time = #{shipTime},</if>
+        <if test="completeTime != null">complete_time = #{completeTime},</if>
+        <if test="closeTime != null">close_time = #{closeTime},</if>
+        <if test="refundReason != null">refund_reason = #{refundReason},</if>
+        <if test="refundDescription != null">refund_description = #{refundDescription},</if>
+        <if test="refundImages != null">refund_images = #{refundImages},</if>
+        <if test="refundTime != null">refund_time = #{refundTime},</if>
+        update_time = now()
+        where id = #{id}
+    </update>
+
+    <update id="updateOrdersStatus">
+        update orders set status = #{param2}, update_time = now() where id = #{param1}
+    </update>
+
+    <delete id="deleteOrdersById" parameterType="Long">
+        delete from orders where id = #{id}
+    </delete>
+
+</mapper>

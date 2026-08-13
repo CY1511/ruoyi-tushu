@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.IdleGoodsMapper">
+
+    <resultMap type="IdleGoods" id="IdleGoodsResult">
+        <result property="goodsId"    column="goods_id"    />
+        <result property="categoryId"    column="category_id"    />
+        <result property="categoryName"    column="category_name"    />
+        <result property="goodsName"    column="goods_name"    />
+        <result property="coverImage"    column="cover_image"    />
+        <result property="price"    column="price"    />
+        <result property="originalPrice"    column="original_price"    />
+        <result property="qualityLevel"    column="quality_level"    />
+        <result property="courseName"    column="course_name"    />
+        <result property="isbn"    column="isbn"    />
+        <result property="description"    column="description"    />
+        <result property="publisherId"    column="publisher_id"    />
+        <result property="publisherName"    column="publisher_name"    />
+        <result property="contactPhone"    column="contact_phone"    />
+        <result property="tradeAddress"    column="trade_address"    />
+        <result property="viewCount"    column="view_count"    />
+        <result property="collectCount"    column="collect_count"    />
+        <result property="auditStatus"    column="audit_status"    />
+        <result property="goodsStatus"    column="goods_status"    />
+        <result property="auditUser"    column="audit_user"    />
+        <result property="auditUserName"    column="audit_user_name"    />
+        <result property="auditTime"    column="audit_time"    />
+        <result property="auditRemark"    column="audit_remark"    />
+        <result property="remark"    column="remark"    />
+        <result property="createBy"    column="create_by"    />
+        <result property="createTime"    column="create_time"    />
+        <result property="updateBy"    column="update_by"    />
+        <result property="updateTime"    column="update_time"    />
+    </resultMap>
+
+    <sql id="selectIdleGoodsVo">
+        select
+        g.goods_id,
+        g.category_id,
+        c.category_name,
+        g.goods_name,
+        g.cover_image,
+        g.price,
+        g.original_price,
+        g.quality_level,
+        g.course_name,
+        g.isbn,
+        g.description,
+        g.publisher_id,
+        u1.user_name as publisher_name,
+        g.contact_phone,
+        g.trade_address,
+        g.view_count,
+        g.collect_count,
+        g.audit_status,
+        g.goods_status,
+        g.audit_user,
+        u2.user_name as audit_user_name,
+        g.audit_time,
+        g.audit_remark,
+        g.remark,
+        g.create_by,
+        g.create_time,
+        g.update_by,
+        g.update_time
+        from idle_goods g
+        left join idle_category c on g.category_id = c.category_id
+        left join sys_user u1 on g.publisher_id = u1.user_id
+        left join sys_user u2 on g.audit_user = u2.user_id
+    </sql>
+
+    <select id="selectIdleGoodsList" parameterType="IdleGoods" resultMap="IdleGoodsResult">
+        <include refid="selectIdleGoodsVo"/>
+        <where>
+            <if test="goodsName != null  and goodsName != ''"> and g.goods_name like concat('%', #{goodsName}, '%')</if>
+            <if test="price != null "> and g.price = #{price}</if>
+            <if test="originalPrice != null "> and g.original_price = #{originalPrice}</if>
+            <if test="qualityLevel != null  and qualityLevel != ''"> and g.quality_level = #{qualityLevel}</if>
+            <if test="courseName != null  and courseName != ''"> and g.course_name like concat('%', #{courseName}, '%')</if>
+            <if test="isbn != null  and isbn != ''"> and g.isbn = #{isbn}</if>
+            <if test="description != null  and description != ''"> and g.description = #{description}</if>
+            <if test="publisherId != null "> and g.publisher_id = #{publisherId}</if>
+            <if test="contactPhone != null  and contactPhone != ''"> and g.contact_phone = #{contactPhone}</if>
+            <if test="tradeAddress != null  and tradeAddress != ''"> and g.trade_address = #{tradeAddress}</if>
+            <if test="viewCount != null "> and g.view_count = #{viewCount}</if>
+            <if test="collectCount != null "> and g.collect_count = #{collectCount}</if>
+            <if test="auditStatus != null  and auditStatus != ''"> and g.audit_status = #{auditStatus}</if>
+            <if test="goodsStatus != null  and goodsStatus != ''"> and g.goods_status = #{goodsStatus}</if>
+            <if test="auditUser != null  and auditUser != ''"> and g.audit_user = #{auditUser}</if>
+            <if test="auditTime != null "> and g.audit_time = #{auditTime}</if>
+            <if test="auditRemark != null  and auditRemark != ''"> and g.audit_remark = #{auditRemark}</if>
+        </where>
+        order by g.create_time desc
+    </select>
+
+    <select id="selectIdleGoodsByGoodsId" parameterType="Long" resultMap="IdleGoodsResult">
+        <include refid="selectIdleGoodsVo"/>
+        where g.goods_id = #{goodsId}
+    </select>
+
+    <insert id="insertIdleGoods" parameterType="IdleGoods" useGeneratedKeys="true" keyProperty="goodsId">
+        insert into idle_goods
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="categoryId != null">category_id,</if>
+            <if test="goodsName != null and goodsName != ''">goods_name,</if>
+            <if test="coverImage != null">cover_image,</if>
+            <if test="price != null">price,</if>
+            <if test="originalPrice != null">original_price,</if>
+            <if test="qualityLevel != null">quality_level,</if>
+            <if test="courseName != null">course_name,</if>
+            <if test="isbn != null">isbn,</if>
+            <if test="description != null">description,</if>
+            <if test="publisherId != null">publisher_id,</if>
+            <if test="contactPhone != null">contact_phone,</if>
+            <if test="tradeAddress != null">trade_address,</if>
+            <if test="viewCount != null">view_count,</if>
+            <if test="collectCount != null">collect_count,</if>
+            <if test="auditStatus != null">audit_status,</if>
+            <if test="goodsStatus != null">goods_status,</if>
+            <if test="auditUser != null">audit_user,</if>
+            <if test="auditTime != null">audit_time,</if>
+            <if test="auditRemark != null">audit_remark,</if>
+            <if test="remark != null">remark,</if>
+            <if test="createBy != null">create_by,</if>
+            <if test="createTime != null">create_time,</if>
+            <if test="updateBy != null">update_by,</if>
+            <if test="updateTime != null">update_time,</if>
+        </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="categoryId != null">#{categoryId},</if>
+            <if test="goodsName != null and goodsName != ''">#{goodsName},</if>
+            <if test="coverImage != null">#{coverImage},</if>
+            <if test="price != null">#{price},</if>
+            <if test="originalPrice != null">#{originalPrice},</if>
+            <if test="qualityLevel != null">#{qualityLevel},</if>
+            <if test="courseName != null">#{courseName},</if>
+            <if test="isbn != null">#{isbn},</if>
+            <if test="description != null">#{description},</if>
+            <if test="publisherId != null">#{publisherId},</if>
+            <if test="contactPhone != null">#{contactPhone},</if>
+            <if test="tradeAddress != null">#{tradeAddress},</if>
+            <if test="viewCount != null">#{viewCount},</if>
+            <if test="collectCount != null">#{collectCount},</if>
+            <if test="auditStatus != null">#{auditStatus},</if>
+            <if test="goodsStatus != null">#{goodsStatus},</if>
+            <if test="auditUser != null">#{auditUser},</if>
+            <if test="auditTime != null">#{auditTime},</if>
+            <if test="auditRemark != null">#{auditRemark},</if>
+            <if test="remark != null">#{remark},</if>
+            <if test="createBy != null">#{createBy},</if>
+            <if test="createTime != null">#{createTime},</if>
+            <if test="updateBy != null">#{updateBy},</if>
+            <if test="updateTime != null">#{updateTime},</if>
+        </trim>
+    </insert>
+
+    <update id="updateIdleGoods" parameterType="IdleGoods">
+        update idle_goods
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="categoryId != null">category_id = #{categoryId},</if>
+            <if test="goodsName != null and goodsName != ''">goods_name = #{goodsName},</if>
+            <if test="coverImage != null">cover_image = #{coverImage},</if>
+            <if test="price != null">price = #{price},</if>
+            <if test="originalPrice != null">original_price = #{originalPrice},</if>
+            <if test="qualityLevel != null">quality_level = #{qualityLevel},</if>
+            <if test="courseName != null">course_name = #{courseName},</if>
+            <if test="isbn != null">isbn = #{isbn},</if>
+            <if test="description != null">description = #{description},</if>
+            <if test="publisherId != null">publisher_id = #{publisherId},</if>
+            <if test="contactPhone != null">contact_phone = #{contactPhone},</if>
+            <if test="tradeAddress != null">trade_address = #{tradeAddress},</if>
+            <if test="viewCount != null">view_count = #{viewCount},</if>
+            <if test="collectCount != null">collect_count = #{collectCount},</if>
+            <if test="auditStatus != null">audit_status = #{auditStatus},</if>
+            <if test="goodsStatus != null">goods_status = #{goodsStatus},</if>
+            <if test="auditUser != null">audit_user = #{auditUser},</if>
+            <if test="auditTime != null">audit_time = #{auditTime},</if>
+            <if test="auditRemark != null">audit_remark = #{auditRemark},</if>
+            <if test="remark != null">remark = #{remark},</if>
+            <if test="createBy != null">create_by = #{createBy},</if>
+            <if test="createTime != null">create_time = #{createTime},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+        </trim>
+        where goods_id = #{goodsId}
+    </update>
+
+    <delete id="deleteIdleGoodsByGoodsId" parameterType="Long">
+        delete from idle_goods where goods_id = #{goodsId}
+    </delete>
+
+    <delete id="deleteIdleGoodsByGoodsIds" parameterType="String">
+        delete from idle_goods where goods_id in
+        <foreach item="goodsId" collection="array" open="(" separator="," close=")">
+            #{goodsId}
+        </foreach>
+    </delete>
+
+    <select id="countGoodsByPublisherId" parameterType="Long" resultType="int">
+        select count(*) from idle_goods where publisher_id = #{publisherId}
+    </select>
+</mapper>
