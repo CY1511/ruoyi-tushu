@@ -12,7 +12,7 @@
       <el-form-item label="状态" prop="status">
         <el-select v-model="queryParams.status" placeholder="请选择状态" clearable>
           <el-option
-            v-for="dict in dict.type.status"
+            v-for="dict in dict.type.sys_normal_disable"
             :key="dict.value"
             :label="dict.label"
             :value="dict.value"
@@ -64,7 +64,7 @@
       </el-table-column>
       <el-table-column label="状态" align="center" prop="status">
         <template slot-scope="scope">
-          <dict-tag :options="dict.type.status" :value="scope.row.status"/>
+          <dict-tag :options="dict.type.sys_normal_disable" :value="scope.row.status"/>
         </template>
       </el-table-column>
       <el-table-column label="备注" align="center" prop="remark" />
@@ -117,7 +117,7 @@
             <el-form-item label="状态" prop="status">
               <el-select v-model="form.status" placeholder="请选择状态">
                 <el-option
-                  v-for="dict in dict.type.status"
+                  v-for="dict in dict.type.sys_normal_disable"
                   :key="dict.value"
                   :label="dict.label"
                   :value="dict.value"
@@ -147,7 +147,7 @@ import "@riophae/vue-treeselect/dist/vue-treeselect.css"
 
 export default {
   name: "Category",
-  dicts: ['status'],
+  dicts: ['sys_normal_disable'],
   components: {
     Treeselect
   },

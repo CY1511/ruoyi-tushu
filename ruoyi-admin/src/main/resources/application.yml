@@ -116,12 +116,18 @@ pagehelper:
   supportMethodsArguments: true
   params: count=countSql
 
+# 接口文档开关：开发环境开，生产环境设为 false
+# （环境变量 SWAGGER_ENABLED=false，或启动参数 --swagger.enabled=false）
+swagger:
+  enabled: ${SWAGGER_ENABLED:true}
+
 # Springdoc配置
 springdoc:
   api-docs:
+    enabled: ${swagger.enabled:true}
     path: /v3/api-docs
   swagger-ui:
-    enabled: true
+    enabled: ${swagger.enabled:true}
     path: /swagger-ui.html
     tags-sorter: alpha
   group-configs:

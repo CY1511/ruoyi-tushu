@@ -1,6 +1,7 @@
 package com.ruoyi.web.core.config;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import com.ruoyi.common.config.RuoYiConfig;
@@ -17,6 +18,7 @@ import io.swagger.v3.oas.models.security.SecurityScheme;
  * @author ruoyi
  */
 @Configuration
+@ConditionalOnProperty(prefix = "swagger", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class SwaggerConfig
 {
     /** 系统基础配置 */

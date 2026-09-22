@@ -16,24 +16,9 @@ export function listGoods(query) {
   })
 }
 
-export function listFrontGoods(query) {
-  return request({
-    url: '/system/goods/front/list',
-    method: 'get',
-    params: query
-  })
-}
-
 export function getGoods(goodsId) {
   return request({
     url: '/system/goods/' + goodsId,
-    method: 'get'
-  })
-}
-
-export function getFrontGoods(goodsId) {
-  return request({
-    url: '/system/goods/front/' + goodsId,
     method: 'get'
   })
 }

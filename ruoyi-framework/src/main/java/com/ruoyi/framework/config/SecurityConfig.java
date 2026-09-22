@@ -1,6 +1,9 @@
 package com.ruoyi.framework.config;
 
+import java.util.ArrayList;
+import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -58,6 +61,18 @@ public class SecurityConfig
     @Autowired
     private PermitAllUrlProperties permitAllUrl;
 
+    /**
+     * 接口文档开关，生产环境关掉后连安全放行一并收掉
+     */
+    @Value("${swagger.enabled:true}")
+    private boolean swaggerEnabled;
+
+    /**
+     * Druid 监控台开关，跟随 statViewServlet.enabled，生产环境应关掉
+     */
+    @Value("${spring.datasource.druid.statViewServlet.enabled:false}")
+    private boolean druidConsoleEnabled;
+
 	/**
 	 * 身份验证实现
 	 */
@@ -106,7 +121,8 @@ public class SecurityConfig
                     .requestMatchers("/category/list", "/course/list").permitAll()
                     // 静态资源，可匿名访问
                     .requestMatchers(HttpMethod.GET, "/", "/*.html", "/**.html", "/**.css", "/**.js", "/profile/**").permitAll()
-                    .requestMatchers("/swagger-ui.html", "/v3/api-docs/**", "/swagger-ui/**", "/druid/**").permitAll()
+                    // 接口文档与 Druid 监控台：只有开关打开时才放行，避免生产环境裸奔
+                    .requestMatchers(swaggerAndMonitorUrls()).permitAll()
                     // 除上面外的所有请求全部需要鉴权认证
                     .anyRequest().authenticated();
             })
@@ -118,6 +134,31 @@ public class SecurityConfig
             .addFilterBefore(corsFilter, JwtAuthenticationTokenFilter.class)
             .addFilterBefore(corsFilter, LogoutFilter.class)
             .build();
+    }
+
+    /**
+     * 需要匿名放行的"运维类"地址。
+     *
+     * <p>接口文档（Swagger/springdoc）与 Druid 监控台默认是按开关放行的：
+     * 开关关掉后这些地址既不再暴露、也不再被放行，避免生产环境裸奔。
+     * 原来这两个地址是无条件 permitAll 的。</p>
+     *
+     * @return 需要放行的地址数组，开关全关时返回空数组
+     */
+    private String[] swaggerAndMonitorUrls()
+    {
+        List<String> urls = new ArrayList<>(4);
+        if (swaggerEnabled)
+        {
+            urls.add("/swagger-ui.html");
+            urls.add("/swagger-ui/**");
+            urls.add("/v3/api-docs/**");
+        }
+        if (druidConsoleEnabled)
+        {
+            urls.add("/druid/**");
+        }
+        return urls.toArray(new String[0]);
     }
 
     /**
