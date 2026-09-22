@@ -1,6 +1,5 @@
 package com.ruoyi.framework.config;
 
-import org.springframework.cache.annotation.CachingConfigurerSupport;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -11,13 +10,17 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 /**
  * redis配置
- * 
+ *
+ * <p>注意：这里不再继承 {@code CachingConfigurerSupport}。它自 Spring 6.2 起已废弃，
+ * 且它默认返回 null 的 cacheManager() 会被 {@code @EnableCaching} 当作"显式配置"，
+ * 反而覆盖掉容器里的 CacheManager。缓存相关的装配统一放在 {@link CacheConfig}。</p>
+ *
  * @author ruoyi
  */
 @SuppressWarnings("deprecation")
 @Configuration
 @EnableCaching
-public class RedisConfig extends CachingConfigurerSupport
+public class RedisConfig
 {
     @Bean
     @SuppressWarnings(value = { "unchecked", "rawtypes" })

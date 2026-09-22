@@ -1,6 +1,9 @@
 package com.ruoyi.system.service.impl;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
+import com.ruoyi.common.core.redis.RedisCache;
 import com.ruoyi.common.exception.ServiceException;
 import com.ruoyi.common.utils.DateUtils;
 import com.ruoyi.common.utils.SecurityUtils;
@@ -13,15 +16,98 @@ import com.ruoyi.system.service.IIdleGoodsService;
 
 /**
  * 商品信息Service业务层处理
- * 
+ *
+ * <p><b>缓存策略（cache-aside + 主动失效）：</b></p>
+ * <ul>
+ *   <li>读：{@link #selectGoodsDetail(Long)} 先读 Redis，未命中再查库并回填
+ *       （key：{@code idleGoods:{goodsId}}，TTL 10 分钟兜底）；</li>
+ *   <li>写：所有写路径（修改、审核、上下架、被下单、删除）都<b>主动删除</b>这条缓存，
+ *       避免"商品已经下架，详情页还能看到"的脏窗口；</li>
+ *   <li>TTL 只做兜底：万一某条写路径漏了删除，最多脏 10 分钟。</li>
+ * </ul>
+ *
+ * <p><b>为什么用 RedisCache 而不是 @Cacheable / @CacheEvict：</b>
+ * 本机环境是 Redis 3.2（Windows 版）+ Spring Data Redis 4，实测
+ * {@code RedisCache.evict()/clear()} 是<b>静默空操作</b>（用代码探针验证过：
+ * cache.get 命中为 true，evict 之后 key 仍在 Redis 里，而 RedisTemplate.delete 正常）。
+ * 换成框架自带的 {@link RedisCache} 后读写删三条路径都验证通过，
+ * 并且在任何 Redis 版本上行为一致。</p>
+ *
  * @author ruoyi
  * @date 2026-07-12
  */
 @Service
 public class IdleGoodsServiceImpl implements IIdleGoodsService 
 {
+    /** 商品详情缓存 key 前缀，完整 key 形如 idleGoods:1001 */
+    private static final String CACHE_KEY_PREFIX = "idleGoods:";
+
+    /** 商品详情缓存时长（分钟），仅兜底，正确性靠写路径主动删除 */
+    private static final int CACHE_TTL_MINUTES = 10;
+
     @Autowired
     private IdleGoodsMapper idleGoodsMapper;
+
+    @Autowired
+    private RedisCache redisCache;
+
+    // =========================================================================
+    // 商品详情缓存
+    // =========================================================================
+
+    /**
+     * 查询商品详情（cache-aside：先查缓存，未命中查库并回填）
+     *
+     * <p>缓存的是<b>原始行数据</b>，不做可见性判断 —— 可见性和当前登录用户有关，
+     * 属于请求级逻辑，不能进缓存。</p>
+     *
+     * @param goodsId 商品信息主键
+     * @return 商品信息，不存在返回 null
+     */
+    @Override
+    public IdleGoods selectGoodsDetail(Long goodsId)
+    {
+        if (goodsId == null)
+        {
+            return null;
+        }
+        String key = CACHE_KEY_PREFIX + goodsId;
+        IdleGoods cached = redisCache.getCacheObject(key);
+        if (cached != null)
+        {
+            return cached;
+        }
+        IdleGoods goods = idleGoodsMapper.selectIdleGoodsByGoodsId(goodsId);
+        if (goods != null)
+        {
+            redisCache.setCacheObject(key, goods, CACHE_TTL_MINUTES, TimeUnit.MINUTES);
+        }
+        return goods;
+    }
+
+    /**
+     * 删除单个商品详情缓存
+     */
+    private void evictGoodsCache(Long goodsId)
+    {
+        if (goodsId == null)
+        {
+            return;
+        }
+        redisCache.deleteObject(CACHE_KEY_PREFIX + goodsId);
+    }
+
+    /**
+     * 清空商品详情缓存（批量操作场景）
+     */
+    private void clearGoodsCache()
+    {
+        Collection<String> keys = redisCache.keys(CACHE_KEY_PREFIX + "*");
+        if (keys != null && !keys.isEmpty())
+        {
+            redisCache.deleteObject(keys);
+        }
+    }
 
     /**
      * 查询商品信息
@@ -70,7 +156,9 @@ public class IdleGoodsServiceImpl implements IIdleGoodsService
     public int updateIdleGoods(IdleGoods idleGoods)
     {
         idleGoods.setUpdateTime(DateUtils.getNowDate());
-        return idleGoodsMapper.updateIdleGoods(idleGoods);
+        int rows = idleGoodsMapper.updateIdleGoods(idleGoods);
+        evictGoodsCache(idleGoods.getGoodsId());
+        return rows;
     }
 
     /**
@@ -82,7 +170,9 @@ public class IdleGoodsServiceImpl implements IIdleGoodsService
     @Override
     public int deleteIdleGoodsByGoodsIds(Long[] goodsIds)
     {
-        return idleGoodsMapper.deleteIdleGoodsByGoodsIds(goodsIds);
+        int rows = idleGoodsMapper.deleteIdleGoodsByGoodsIds(goodsIds);
+        clearGoodsCache();
+        return rows;
     }
 
     /**
@@ -94,7 +184,9 @@ public class IdleGoodsServiceImpl implements IIdleGoodsService
     @Override
     public int deleteIdleGoodsByGoodsId(Long goodsId)
     {
-        return idleGoodsMapper.deleteIdleGoodsByGoodsId(goodsId);
+        int rows = idleGoodsMapper.deleteIdleGoodsByGoodsId(goodsId);
+        evictGoodsCache(goodsId);
+        return rows;
     }
 
     /**
@@ -118,7 +210,9 @@ public class IdleGoodsServiceImpl implements IIdleGoodsService
         } else if (IdleGoods.AUDIT_REJECTED.equals(idleGoods.getAuditStatus())) {
             idleGoods.setGoodsStatus(IdleGoods.STATUS_OFFLINE);
         }
-        return idleGoodsMapper.updateIdleGoods(idleGoods);
+        int rows = idleGoodsMapper.updateIdleGoods(idleGoods);
+        evictGoodsCache(idleGoods.getGoodsId());
+        return rows;
     }
 
     /**
@@ -134,7 +228,9 @@ public class IdleGoodsServiceImpl implements IIdleGoodsService
         idleGoods.setGoodsId(goodsId);
         idleGoods.setGoodsStatus(IdleGoods.STATUS_ON_SALE);
         idleGoods.setUpdateTime(DateUtils.getNowDate());
-        return idleGoodsMapper.updateIdleGoods(idleGoods);
+        int rows = idleGoodsMapper.updateIdleGoods(idleGoods);
+        evictGoodsCache(goodsId);
+        return rows;
     }
 
     /**
@@ -150,7 +246,9 @@ public class IdleGoodsServiceImpl implements IIdleGoodsService
         idleGoods.setGoodsId(goodsId);
         idleGoods.setGoodsStatus(IdleGoods.STATUS_OFFLINE);
         idleGoods.setUpdateTime(DateUtils.getNowDate());
-        return idleGoodsMapper.updateIdleGoods(idleGoods);
+        int rows = idleGoodsMapper.updateIdleGoods(idleGoods);
+        evictGoodsCache(goodsId);
+        return rows;
     }
 
     @Override
@@ -200,7 +298,10 @@ public class IdleGoodsServiceImpl implements IIdleGoodsService
         idleGoods.setViewCount(null);
         idleGoods.setCollectCount(null);
         idleGoods.setUpdateBy(SecurityUtils.getUsername());
-        return updateIdleGoods(idleGoods);
+        idleGoods.setUpdateTime(DateUtils.getNowDate());
+        int rows = idleGoodsMapper.updateIdleGoods(idleGoods);
+        evictGoodsCache(idleGoods.getGoodsId());
+        return rows;
     }
 
     /**
@@ -210,7 +311,9 @@ public class IdleGoodsServiceImpl implements IIdleGoodsService
     public int deleteMyGoods(Long goodsId)
     {
         requireOwnerGoods(goodsId);
-        return deleteIdleGoodsByGoodsId(goodsId);
+        int rows = idleGoodsMapper.deleteIdleGoodsByGoodsId(goodsId);
+        evictGoodsCache(goodsId);
+        return rows;
     }
 
     /**
@@ -219,7 +322,7 @@ public class IdleGoodsServiceImpl implements IIdleGoodsService
     @Override
     public IdleGoods selectVisibleGoodsByGoodsId(Long goodsId)
     {
-        IdleGoods goods = idleGoodsMapper.selectIdleGoodsByGoodsId(goodsId);
+        IdleGoods goods = selectGoodsDetail(goodsId);
         if (goods == null)
         {
             throw new ServiceException("商品不存在");
@@ -241,28 +344,35 @@ public class IdleGoodsServiceImpl implements IIdleGoodsService
 
     // =========================================================================
     // 商品状态流转（由订单状态机驱动）
+    // 商品状态一变，缓存里的详情就过期了，所以每个方法都要失效缓存
     // =========================================================================
 
     @Override
     public int bookGoods(Long goodsId)
     {
         // 条件更新：只有"上架"状态才能被预订，并发下单时天然只有一个成功
-        return idleGoodsMapper.updateGoodsStatusIfMatch(goodsId,
+        int rows = idleGoodsMapper.updateGoodsStatusIfMatch(goodsId,
                 IdleGoods.STATUS_ON_SALE, IdleGoods.STATUS_BOOKED);
+        evictGoodsCache(goodsId);
+        return rows;
     }
 
     @Override
     public int markGoodsSold(Long goodsId)
     {
-        return idleGoodsMapper.updateGoodsStatusIfMatch(goodsId,
+        int rows = idleGoodsMapper.updateGoodsStatusIfMatch(goodsId,
                 IdleGoods.STATUS_BOOKED, IdleGoods.STATUS_SOLD);
+        evictGoodsCache(goodsId);
+        return rows;
     }
 
     @Override
     public int releaseGoods(Long goodsId)
     {
-        return idleGoodsMapper.updateGoodsStatusIfMatch(goodsId,
+        int rows = idleGoodsMapper.updateGoodsStatusIfMatch(goodsId,
                 IdleGoods.STATUS_BOOKED, IdleGoods.STATUS_ON_SALE);
+        evictGoodsCache(goodsId);
+        return rows;
     }
 
     /**

@@ -27,7 +27,8 @@ public class AppCategoryController extends BaseController
     @GetMapping("/tree")
     public AjaxResult tree()
     {
-        List<IdleCategory> list = idleCategoryService.selectIdleCategoryList(new IdleCategory());
+        // 走带缓存的查询：分类属于低频变更数据，整份列表缓存在 Redis（idle:idleCategory:enabled）
+        List<IdleCategory> list = idleCategoryService.selectEnabledCategoryList();
         List<IdleCategory> tree = buildCategoryTree(list);
         return success(tree);
     }

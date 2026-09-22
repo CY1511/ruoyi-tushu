@@ -58,4 +58,13 @@ public interface IIdleCategoryService
      * @return 结果
      */
     public int deleteIdleCategoryByCategoryId(Long categoryId);
+
+    /**
+     * 查询全部启用的分类（C 端分类树数据源）
+     * <p>分类是典型的"读多写少、几乎不变"的数据，整表缓存；
+     * 任何分类写操作都会清掉这份缓存。</p>
+     *
+     * @return 启用的分类集合
+     */
+    public List<IdleCategory> selectEnabledCategoryList();
 }

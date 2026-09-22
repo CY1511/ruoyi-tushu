@@ -134,6 +134,16 @@ public interface IIdleGoodsService
      */
     public IdleGoods selectVisibleGoodsByGoodsId(Long goodsId);
 
+    /**
+     * 查询商品详情（带缓存，读多写少）
+     * <p>只返回原始行数据，<b>不做可见性判断</b> —— 可见性与当前登录用户有关，
+     * 缓存的是数据不是"某个用户看到的视图"。商品任何写操作都会主动失效这条缓存。</p>
+     *
+     * @param goodsId 商品信息主键
+     * @return 商品信息，不存在返回 null
+     */
+    public IdleGoods selectGoodsDetail(Long goodsId);
+
     // ------------------------------------------------------------------
     // 商品状态流转（由订单状态机驱动），返回影响行数以便调用方判断并发结果
     // ------------------------------------------------------------------

@@ -41,4 +41,8 @@ public class CacheConstants
      * 登录账户密码错误次数 redis key
      */
     public static final String PWD_ERR_CNT_KEY = "pwd_err_cnt:";
+
+    // 业务缓存 key 定义在各自业务模块中：
+    //   idleGoods:{goodsId}      —— 闲置商品详情（IdleGoodsServiceImpl）
+    //   idleCategory:all         —— 启用分类列表（IdleCategoryServiceImpl）
 }
