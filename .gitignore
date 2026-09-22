@@ -51,3 +51,9 @@ ppt_workspace/
 slides_workspace/
 node_modules/
 *.iml
+
+# 本地一键启动脚本：内含本机数据库口令等环境信息，只在本机使用，不入库
+start-dev.bat
+stop-dev.bat
+start-dev.sh
+stop-dev.sh

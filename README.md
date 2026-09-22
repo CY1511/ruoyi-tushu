@@ -71,6 +71,21 @@ rouyi-tushu
 
 ## 四、快速启动
 
+### 0. 一键启动（Windows 本地开发）
+
+本机项目根目录有两个便捷脚本（**含本机数据库口令，已加入 .gitignore，不会进仓库**，换机器需要自己重建）：
+
+| 脚本 | 作用 |
+|---|---|
+| `start-dev.bat` | 清理残留进程 → 缺 jar 则自动打包 → 起后端 8081 → 缺依赖则自动装 → 起前端 80 |
+| `stop-dev.bat` | 按端口精确结束进程（不会误杀其他 java / node） |
+
+脚本内已处理三个环境坑，手动启动时同样需要注意：
+
+1. **随机端口**：沙箱/IDE 注入的 `SERVER__PORT`、`SERVER__HOST` 会把 Spring Boot 顶到随机端口，导致前端代理打不通，必须清掉后用 `--server.port=8081` 指定；
+2. **jar 被锁**：只要 `java` 进程还开着，Windows 会锁住 jar，`mvn package` 会报成功但产物根本没换，跑起来还是旧代码 —— 打包前必须先杀进程；
+3. **Node 17+ 跑 webpack4**：前端必须带 `NODE_OPTIONS=--openssl-legacy-provider`，否则报 `ERR_OSSL_EVP_UNSUPPORTED`。
+
 ### 1. 建库（必须按顺序执行）
 
 ```bash
