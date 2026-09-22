@@ -239,6 +239,32 @@ public class IdleGoodsServiceImpl implements IIdleGoodsService
         throw new ServiceException("该商品尚未通过审核或已下架");
     }
 
+    // =========================================================================
+    // 商品状态流转（由订单状态机驱动）
+    // =========================================================================
+
+    @Override
+    public int bookGoods(Long goodsId)
+    {
+        // 条件更新：只有"上架"状态才能被预订，并发下单时天然只有一个成功
+        return idleGoodsMapper.updateGoodsStatusIfMatch(goodsId,
+                IdleGoods.STATUS_ON_SALE, IdleGoods.STATUS_BOOKED);
+    }
+
+    @Override
+    public int markGoodsSold(Long goodsId)
+    {
+        return idleGoodsMapper.updateGoodsStatusIfMatch(goodsId,
+                IdleGoods.STATUS_BOOKED, IdleGoods.STATUS_SOLD);
+    }
+
+    @Override
+    public int releaseGoods(Long goodsId)
+    {
+        return idleGoodsMapper.updateGoodsStatusIfMatch(goodsId,
+                IdleGoods.STATUS_BOOKED, IdleGoods.STATUS_ON_SALE);
+    }
+
     /**
      * 校验商品归属：不存在或不是当前用户的商品，一律拒绝
      *

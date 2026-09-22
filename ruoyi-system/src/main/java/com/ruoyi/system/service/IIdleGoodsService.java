@@ -133,4 +133,33 @@ public interface IIdleGoodsService
      * @return 商品信息
      */
     public IdleGoods selectVisibleGoodsByGoodsId(Long goodsId);
+
+    // ------------------------------------------------------------------
+    // 商品状态流转（由订单状态机驱动），返回影响行数以便调用方判断并发结果
+    // ------------------------------------------------------------------
+
+    /**
+     * 预订商品：上架 → 已预订
+     * <p>走条件更新（where goods_status = '1'），并发下单时只有一个买家能成功。</p>
+     *
+     * @param goodsId 商品ID
+     * @return 影响行数，0 表示已被别人预订或已下架
+     */
+    public int bookGoods(Long goodsId);
+
+    /**
+     * 商品成交：已预订 → 已售出
+     *
+     * @param goodsId 商品ID
+     * @return 影响行数
+     */
+    public int markGoodsSold(Long goodsId);
+
+    /**
+     * 商品解冻：已预订 → 上架（订单取消时调用）
+     *
+     * @param goodsId 商品ID
+     * @return 影响行数
+     */
+    public int releaseGoods(Long goodsId);
 }

@@ -41,6 +41,16 @@
           @keyup.enter.native="handleQuery"
         />
       </el-form-item>
+      <el-form-item label="订单状态" prop="orderStatus">
+        <el-select v-model="queryParams.orderStatus" placeholder="请选择订单状态" clearable style="width: 160px">
+          <el-option
+            v-for="item in statusOptions"
+            :key="item.code"
+            :label="item.label"
+            :value="item.code"
+          />
+        </el-select>
+      </el-form-item>
       <el-form-item label="完成时间" prop="finishTime">
         <el-date-picker clearable
           v-model="queryParams.finishTime"
@@ -109,7 +119,13 @@
       <el-table-column label="卖家ID" align="center" prop="sellerId" />
       <el-table-column label="买家ID" align="center" prop="buyerId" />
       <el-table-column label="成交价格" align="center" prop="orderPrice" />
-      <el-table-column label="订单状态" align="center" prop="orderStatus" />
+      <el-table-column label="订单状态" align="center" prop="orderStatus">
+        <template slot-scope="scope">
+          <el-tag :type="statusTagType(scope.row.orderStatus)">
+            {{ statusLabel(scope.row.orderStatus) }}
+          </el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="完成时间" align="center" prop="finishTime" width="180">
         <template slot-scope="scope">
           <span>{{ parseTime(scope.row.finishTime, '{y}-{m}-{d}') }}</span>
@@ -119,6 +135,21 @@
       <el-table-column label="备注" align="center" prop="remark" />
       <el-table-column label="操作" align="center" class-name="small-padding fixed-width">
         <template slot-scope="scope">
+          <el-button
+            size="mini"
+            type="text"
+            icon="el-icon-refresh"
+            @click="handleChangeStatus(scope.row)"
+            v-hasPermi="['system:order:changeStatus']"
+            v-if="!isFinalStatus(scope.row.orderStatus)"
+          >流转</el-button>
+          <el-button
+            size="mini"
+            type="text"
+            icon="el-icon-time"
+            @click="handleStatusLog(scope.row)"
+            v-hasPermi="['system:order:query']"
+          >记录</el-button>
           <el-button
             size="mini"
             type="text"
@@ -201,11 +232,81 @@
         <el-button @click="cancel">取 消</el-button>
       </div>
     </el-dialog>
+
+    <!-- 订单状态流转对话框：可选状态由后端 /nextStatus 返回，界面上根本选不出非法状态 -->
+    <el-dialog title="订单状态流转" :visible.sync="statusOpen" width="520px" append-to-body>
+      <el-form ref="statusForm" :model="statusForm" :rules="statusRules" label-width="100px">
+        <el-form-item label="订单编号">
+          <span>{{ statusForm.orderNo }}</span>
+        </el-form-item>
+        <el-form-item label="当前状态">
+          <el-tag :type="statusTagType(statusForm.fromStatus)">{{ statusLabel(statusForm.fromStatus) }}</el-tag>
+        </el-form-item>
+        <el-form-item label="目标状态" prop="toStatus">
+          <el-select v-model="statusForm.toStatus" placeholder="请选择目标状态" style="width: 100%">
+            <el-option
+              v-for="item in nextStatusOptions"
+              :key="item.code"
+              :label="item.label"
+              :value="item.code"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="备注" prop="remark">
+          <el-input v-model="statusForm.remark" type="textarea" placeholder="取消订单时建议填写原因" />
+        </el-form-item>
+      </el-form>
+      <div slot="footer" class="dialog-footer">
+        <el-button type="primary" @click="submitChangeStatus">确 定</el-button>
+        <el-button @click="statusOpen = false">取 消</el-button>
+      </div>
+    </el-dialog>
+
+    <!-- 订单状态流转记录（时间线） -->
+    <el-dialog title="状态流转记录" :visible.sync="logOpen" width="660px" append-to-body>
+      <el-timeline v-if="statusLogs.length > 0">
+        <el-timeline-item
+          v-for="log in statusLogs"
+          :key="log.logId"
+          :timestamp="parseTime(log.createTime)"
+          placement="top"
+        >
+          <p>
+            <span v-if="log.fromStatus !== null && log.fromStatus !== undefined">
+              {{ statusLabel(log.fromStatus) }} →
+            </span>
+            <b>{{ statusLabel(log.toStatus) }}</b>
+            <span style="color: #909399">
+              ｜{{ log.operatorName }}（{{ operatorRoleLabel(log.operatorRole) }}）
+            </span>
+          </p>
+          <p v-if="log.remark" style="color: #606266">{{ log.remark }}</p>
+        </el-timeline-item>
+      </el-timeline>
+      <el-empty v-else description="暂无流转记录" />
+    </el-dialog>
   </div>
 </template>
 
 <script>
-import { listOrder, getOrder, delOrder, addOrder, updateOrder } from "@/api/system/order"
+import {
+  listOrder,
+  getOrder,
+  delOrder,
+  addOrder,
+  updateOrder,
+  listNextStatus,
+  changeOrderStatus,
+  listStatusLog
+} from "@/api/system/order"
+
+// 订单状态：与后端 IdleOrderStatus 枚举一一对应，这里只用于展示与筛选
+const ORDER_STATUS = [
+  { code: "0", label: "待确认", tag: "warning" },
+  { code: "1", label: "交易中", tag: "" },
+  { code: "2", label: "已完成", tag: "success" },
+  { code: "3", label: "已取消", tag: "info" }
+]
 
 export default {
   name: "Order",
@@ -229,6 +330,19 @@ export default {
       title: "",
       // 是否显示弹出层
       open: false,
+      // 状态下拉选项
+      statusOptions: ORDER_STATUS,
+      // 状态流转弹窗
+      statusOpen: false,
+      statusForm: {},
+      // 当前订单允许流转到的状态（后端返回，前端不硬编码流转规则）
+      nextStatusOptions: [],
+      statusRules: {
+        toStatus: [{ required: true, message: "请选择目标状态", trigger: "change" }]
+      },
+      // 流转记录弹窗
+      logOpen: false,
+      statusLogs: [],
       // 查询参数
       queryParams: {
         pageNum: 1,
@@ -260,10 +374,7 @@ export default {
         ],
         orderPrice: [
           { required: true, message: "成交价格不能为空", trigger: "blur" }
-        ],
-        orderStatus: [
-          { required: true, message: "订单状态不能为空", trigger: "change" }
-        ],
+        ]
       }
     }
   },
@@ -341,20 +452,82 @@ export default {
     submitForm() {
       this.$refs["form"].validate(valid => {
         if (valid) {
-          if (this.form.orderId != null) {
-            updateOrder(this.form).then(response => {
+          // 订单状态不从这个表单提交：后端已禁止，改状态请用「流转」按钮
+          const { orderStatus, ...payload } = this.form
+          if (payload.orderId != null) {
+            updateOrder(payload).then(response => {
               this.$modal.msgSuccess("修改成功")
               this.open = false
               this.getList()
             })
           } else {
-            addOrder(this.form).then(response => {
+            addOrder(payload).then(response => {
               this.$modal.msgSuccess("新增成功")
               this.open = false
               this.getList()
             })
           }
         }
+      })
+    },
+    /** 状态码 -> 文案 */
+    statusLabel(code) {
+      const item = ORDER_STATUS.find(s => s.code === String(code))
+      return item ? item.label : code
+    },
+    /** 状态码 -> 标签颜色 */
+    statusTagType(code) {
+      const item = ORDER_STATUS.find(s => s.code === String(code))
+      return item ? item.tag : "info"
+    },
+    /** 是否为终态（已完成 / 已取消） */
+    isFinalStatus(code) {
+      return String(code) === "2" || String(code) === "3"
+    },
+    /** 操作角色文案 */
+    operatorRoleLabel(role) {
+      const map = { BUYER: "买家", SELLER: "卖家", ADMIN: "管理端", SYSTEM: "系统" }
+      return map[role] || role
+    },
+    /** 打开状态流转弹窗：先问后端这个订单能去哪几个状态 */
+    handleChangeStatus(row) {
+      this.statusForm = {
+        orderId: row.orderId,
+        orderNo: row.orderNo,
+        fromStatus: row.orderStatus,
+        toStatus: null,
+        remark: null
+      }
+      this.nextStatusOptions = []
+      listNextStatus(row.orderId).then(response => {
+        this.nextStatusOptions = response.data || []
+        this.statusOpen = true
+        this.$nextTick(() => {
+          this.$refs["statusForm"] && this.$refs["statusForm"].clearValidate()
+        })
+      })
+    },
+    /** 提交流转 */
+    submitChangeStatus() {
+      this.$refs["statusForm"].validate(valid => {
+        if (valid) {
+          changeOrderStatus(
+            this.statusForm.orderId,
+            this.statusForm.toStatus,
+            this.statusForm.remark
+          ).then(response => {
+            this.$modal.msgSuccess("状态流转成功")
+            this.statusOpen = false
+            this.getList()
+          })
+        }
+      })
+    },
+    /** 查看状态流转记录 */
+    handleStatusLog(row) {
+      listStatusLog(row.orderId).then(response => {
+        this.statusLogs = response.data || []
+        this.logOpen = true
       })
     },
     /** 删除按钮操作 */

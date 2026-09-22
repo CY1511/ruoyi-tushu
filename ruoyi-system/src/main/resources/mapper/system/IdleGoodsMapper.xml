@@ -201,4 +201,11 @@
     <select id="countGoodsByPublisherId" parameterType="Long" resultType="int">
         select count(*) from idle_goods where publisher_id = #{publisherId}
     </select>
+
+    <!-- 条件更新：只有当前状态等于期望值时才改，用于下单抢单的并发控制 -->
+    <update id="updateGoodsStatusIfMatch">
+        update idle_goods
+        set goods_status = #{toStatus}, update_time = now()
+        where goods_id = #{goodsId} and goods_status = #{fromStatus}
+    </update>
 </mapper>

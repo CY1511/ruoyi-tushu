@@ -1,22 +1,26 @@
 package com.ruoyi.web.controller.idle;
 
-import java.util.Date;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+import com.ruoyi.common.annotation.Log;
 import com.ruoyi.common.core.controller.BaseController;
 import com.ruoyi.common.core.domain.AjaxResult;
 import com.ruoyi.common.core.page.TableDataInfo;
-import com.ruoyi.common.utils.DateUtils;
+import com.ruoyi.common.enums.BusinessType;
 import com.ruoyi.common.utils.SecurityUtils;
-import com.ruoyi.common.utils.uuid.IdUtils;
-import com.ruoyi.system.domain.IdleGoods;
 import com.ruoyi.system.domain.IdleOrder;
-import com.ruoyi.system.service.IIdleGoodsService;
 import com.ruoyi.system.service.IIdleOrderService;
 
 /**
  * C端-订单接口
+ *
+ * <p>Controller 现在只做参数接收与结果封装，三件事都下沉了：</p>
+ * <ul>
+ *   <li>下单的并发控制与事务 → {@code IIdleOrderService#createOrder}</li>
+ *   <li>状态流转的合法性校验 → {@code IdleOrderStatus} + {@code #changeStatus}</li>
+ *   <li>买家/卖家身份校验 → {@code #selectMyOrderByOrderId / acceptOrder / confirmReceipt / cancelOrder}</li>
+ * </ul>
  */
 @RestController
 @RequestMapping("/app/order")
@@ -25,40 +29,13 @@ public class AppOrderController extends BaseController
     @Autowired
     private IIdleOrderService idleOrderService;
 
-    @Autowired
-    private IIdleGoodsService idleGoodsService;
-
-    /** 创建订单 */
+    /** 创建订单（买家下单） */
+    @Log(title = "C端订单", businessType = BusinessType.INSERT)
     @PostMapping
     public AjaxResult create(@RequestBody IdleOrder order)
     {
-        Long goodsId = order.getGoodsId();
-        IdleGoods goods = idleGoodsService.selectIdleGoodsByGoodsId(goodsId);
-        if (goods == null)
-        {
-            return error("商品不存在");
-        }
-        if (!"1".equals(goods.getGoodsStatus()))
-        {
-            return error("该商品暂不可购买");
-        }
-        // 不能买自己的商品
-        if (goods.getPublisherId().equals(SecurityUtils.getUserId()))
-        {
-            return error("不能购买自己发布的商品");
-        }
-        // 生成订单编号
-        order.setOrderNo(IdUtils.fastSimpleUUID().substring(0, 20));
-        order.setSellerId(goods.getPublisherId());
-        order.setBuyerId(SecurityUtils.getUserId());
-        order.setOrderPrice(goods.getPrice());
-        order.setOrderStatus("0");
-        // 商品状态变为已预订
-        IdleGoods updateGoods = new IdleGoods();
-        updateGoods.setGoodsId(goodsId);
-        updateGoods.setGoodsStatus("2");
-        idleGoodsService.updateIdleGoods(updateGoods);
-        return toAjax(idleOrderService.insertIdleOrder(order));
+        // 状态、价格、买卖双方都由服务端决定，请求体里只认 goodsId
+        return success(idleOrderService.createOrder(order.getGoodsId()));
     }
 
     /** 我买到的订单 */
@@ -81,95 +58,44 @@ public class AppOrderController extends BaseController
         return getDataTable(list);
     }
 
-    /** 订单详情 */
+    /** 订单详情（仅买卖双方可见） */
     @GetMapping("/{orderId}")
     public AjaxResult getInfo(@PathVariable Long orderId)
     {
-        IdleOrder order = idleOrderService.selectIdleOrderByOrderId(orderId);
-        if (order == null)
-        {
-            return error("订单不存在");
-        }
-        // 只能查看自己的订单（买家或卖家）
-        Long userId = SecurityUtils.getUserId();
-        if (!order.getBuyerId().equals(userId) && !order.getSellerId().equals(userId))
-        {
-            return error("无权查看该订单");
-        }
-        return success(order);
+        return success(idleOrderService.selectMyOrderByOrderId(orderId));
     }
 
-    /** 买家确认收货 */
+    /** 订单状态流转记录（时间线） */
+    @GetMapping("/statusLog/{orderId}")
+    public AjaxResult statusLog(@PathVariable Long orderId)
+    {
+        // 先过一遍可见性校验，避免把别人的订单时间线暴露出去
+        idleOrderService.selectMyOrderByOrderId(orderId);
+        return success(idleOrderService.selectStatusLogs(orderId));
+    }
+
+    /** 买家确认收货：交易中 → 已完成 */
+    @Log(title = "C端订单", businessType = BusinessType.UPDATE)
     @PutMapping("/confirm/{orderId}")
     public AjaxResult confirm(@PathVariable Long orderId)
     {
-        IdleOrder order = idleOrderService.selectIdleOrderByOrderId(orderId);
-        if (order == null || !order.getBuyerId().equals(SecurityUtils.getUserId()))
-        {
-            return error("无权操作");
-        }
-        if (!"1".equals(order.getOrderStatus()))
-        {
-            return error("当前状态不可确认收货");
-        }
-        IdleOrder update = new IdleOrder();
-        update.setOrderId(orderId);
-        update.setOrderStatus("2");
-        update.setFinishTime(DateUtils.getNowDate());
-        // 商品状态变为已售出
-        IdleGoods goods = new IdleGoods();
-        goods.setGoodsId(order.getGoodsId());
-        goods.setGoodsStatus("3");
-        idleGoodsService.updateIdleGoods(goods);
-        return toAjax(idleOrderService.updateIdleOrder(update));
+        return toAjax(idleOrderService.confirmReceipt(orderId));
     }
 
-    /** 取消订单 */
+    /** 取消订单：待确认/交易中 → 已取消 */
+    @Log(title = "C端订单", businessType = BusinessType.UPDATE)
     @PutMapping("/cancel/{orderId}")
-    public AjaxResult cancel(@PathVariable Long orderId)
+    public AjaxResult cancel(@PathVariable Long orderId,
+                             @RequestParam(value = "reason", required = false) String reason)
     {
-        IdleOrder order = idleOrderService.selectIdleOrderByOrderId(orderId);
-        if (order == null)
-        {
-            return error("订单不存在");
-        }
-        Long userId = SecurityUtils.getUserId();
-        // 买家或卖家都可以取消待确认的订单
-        if (!order.getBuyerId().equals(userId) && !order.getSellerId().equals(userId))
-        {
-            return error("无权操作");
-        }
-        if (!"0".equals(order.getOrderStatus()))
-        {
-            return error("当前状态不可取消");
-        }
-        IdleOrder update = new IdleOrder();
-        update.setOrderId(orderId);
-        update.setOrderStatus("3");
-        // 商品恢复上架
-        IdleGoods goods = new IdleGoods();
-        goods.setGoodsId(order.getGoodsId());
-        goods.setGoodsStatus("1");
-        idleGoodsService.updateIdleGoods(goods);
-        return toAjax(idleOrderService.updateIdleOrder(update));
+        return toAjax(idleOrderService.cancelOrder(orderId, reason));
     }
 
-    /** 卖家确认订单 */
+    /** 卖家确认接单：待确认 → 交易中 */
+    @Log(title = "C端订单", businessType = BusinessType.UPDATE)
     @PutMapping("/accept/{orderId}")
     public AjaxResult accept(@PathVariable Long orderId)
     {
-        IdleOrder order = idleOrderService.selectIdleOrderByOrderId(orderId);
-        if (order == null || !order.getSellerId().equals(SecurityUtils.getUserId()))
-        {
-            return error("无权操作");
-        }
-        if (!"0".equals(order.getOrderStatus()))
-        {
-            return error("当前状态不可确认");
-        }
-        IdleOrder update = new IdleOrder();
-        update.setOrderId(orderId);
-        update.setOrderStatus("1");
-        return toAjax(idleOrderService.updateIdleOrder(update));
+        return toAjax(idleOrderService.acceptOrder(orderId));
     }
 }
