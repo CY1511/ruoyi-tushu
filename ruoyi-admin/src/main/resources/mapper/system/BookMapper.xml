@@ -45,7 +45,7 @@
                 and (title like concat('%', #{keyword}, '%') or author like concat('%', #{keyword}, '%') or isbn like concat('%', #{keyword}, '%'))
             </if>
             <if test="categoryId != null">and category_id = #{categoryId}</if>
-            <if test="condition != null">and condition = #{condition}</if>
+            <if test="condition != null">and `condition` = #{condition}</if>
             <if test="minPrice != null">and price &gt;= #{minPrice}</if>
             <if test="maxPrice != null">and price &lt;= #{maxPrice}</if>
             <if test="university != null and university != ''">and university = #{university}</if>
@@ -57,7 +57,7 @@
     </select>
     <insert id="insertBook" parameterType="Book" useGeneratedKeys="true" keyProperty="id">
         insert into book(seller_id, seller_name, seller_avatar, seller_rating, isbn, title, author, publisher,
-                         edition, publish_year, original_price, cover_image, condition, condition_desc, images,
+                         edition, publish_year, original_price, cover_image, `condition`, condition_desc, images,
                          price, category_id, category_name, course_id, course_name, university, stock, status,
                          description, sales, views, favorites, price_evaluation, suggested_price_min, suggested_price_max)
         values(#{sellerId}, #{sellerName}, #{sellerAvatar}, #{sellerRating}, #{isbn}, #{title}, #{author}, #{publisher},
@@ -75,7 +75,7 @@
         <if test="edition != null">edition = #{edition},</if>
         <if test="originalPrice != null">original_price = #{originalPrice},</if>
         <if test="coverImage != null">cover_image = #{coverImage},</if>
-        <if test="condition != null">condition = #{condition},</if>
+        <if test="condition != null">`condition` = #{condition},</if>
         <if test="conditionDesc != null">condition_desc = #{conditionDesc},</if>
         <if test="images != null">images = #{images},</if>
         <if test="price != null">price = #{price},</if>

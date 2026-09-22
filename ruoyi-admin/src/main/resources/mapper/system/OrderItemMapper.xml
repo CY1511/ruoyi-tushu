@@ -18,12 +18,12 @@
     </select>
 
     <insert id="insertOrderItem" parameterType="OrderItem" useGeneratedKeys="true" keyProperty="id">
-        insert into order_item(order_id, book_id, title, cover_image, price, quantity, condition)
+        insert into order_item(order_id, book_id, title, cover_image, price, quantity, `condition`)
         values(#{orderId}, #{bookId}, #{title}, #{coverImage}, #{price}, #{quantity}, #{condition})
     </insert>
 
     <insert id="insertOrderItems" parameterType="list">
-        insert into order_item(order_id, book_id, title, cover_image, price, quantity, condition)
+        insert into order_item(order_id, book_id, title, cover_image, price, quantity, `condition`)
         values
         <foreach collection="list" item="item" separator=",">
             (#{item.orderId}, #{item.bookId}, #{item.title}, #{item.coverImage}, #{item.price}, #{item.quantity}, #{item.condition})

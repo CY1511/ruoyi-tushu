@@ -104,7 +104,10 @@ public class IdleGoodsServiceImpl implements IIdleGoodsService
     @Override
     public int auditIdleGoods(IdleGoods idleGoods)
     {
-        idleGoods.setAuditUser(SecurityUtils.getUsername());
+        // audit_user 存的是审核人ID：IdleGoodsMapper 用 `g.audit_user = u2.user_id` 关联 sys_user
+        // 取用户名，前端审核人下拉框传的也是 userId。原来写入 SecurityUtils.getUsername()，
+        // 与关联条件语义相反，导致列表里「审核人名称」永远为空。
+        idleGoods.setAuditUser(String.valueOf(SecurityUtils.getUserId()));
         idleGoods.setAuditUserName(SecurityUtils.getUsername());
         idleGoods.setAuditTime(DateUtils.getNowDate());
         idleGoods.setUpdateTime(DateUtils.getNowDate());
