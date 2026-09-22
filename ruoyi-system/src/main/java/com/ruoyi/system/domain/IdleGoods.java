@@ -18,6 +18,24 @@ public class IdleGoods extends BaseEntity
 {
     private static final long serialVersionUID = 1L;
 
+    /** 审核状态：待审核 */
+    public static final String AUDIT_PENDING  = "0";
+    /** 审核状态：通过 */
+    public static final String AUDIT_PASSED   = "1";
+    /** 审核状态：驳回 */
+    public static final String AUDIT_REJECTED = "2";
+
+    /** 商品状态：待审核 */
+    public static final String STATUS_PENDING  = "0";
+    /** 商品状态：已上架 */
+    public static final String STATUS_ON_SALE  = "1";
+    /** 商品状态：已预订 */
+    public static final String STATUS_BOOKED   = "2";
+    /** 商品状态：已售出 */
+    public static final String STATUS_SOLD     = "3";
+    /** 商品状态：已下架 */
+    public static final String STATUS_OFFLINE  = "4";
+
     /** 商品ID */
     private Long goodsId;
 
