@@ -1,4 +1,4 @@
-package com.ruoyi.system.controller;
+package com.ruoyi.web.controller.idle;
 
 import java.util.HashMap;
 import java.util.List;
