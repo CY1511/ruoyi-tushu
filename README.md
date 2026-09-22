@@ -77,7 +77,7 @@ rouyi-tushu
 
 | 脚本 | 作用 |
 |---|---|
-| `start-dev.bat` | 清理残留进程 → 缺 jar 则自动打包 → 起后端 8081 → 缺依赖则自动装 → 起前端 80 |
+| `start-dev.bat` | 清理残留进程 → 缺 jar 则自动打包 → 起后端 8081 → 两侧前端缺依赖则自动装 → 起管理端 80 与 C 端 84 |
 | `stop-dev.bat` | 按端口精确结束进程（不会误杀其他 java / node） |
 
 脚本内已处理三个环境坑，手动启动时同样需要注意：
@@ -126,18 +126,28 @@ DB_USERNAME=root DB_PASSWORD=你的密码 java -jar ruoyi-admin/target/ruoyi-adm
 - 后端端口：**8081**（`application.yml` 的 `server.port`）
 - 接口文档：<http://localhost:8081/swagger-ui.html>（`swagger.enabled=false` 时不可访问）
 
-### 4. 启动前端
+### 4. 启动前端（管理端与 C 端是两个独立工程，按需启动）
 
 ```bash
-cd ruoyi-ui  && npm install && npm run dev     # 管理端，默认 80 端口
-cd ruoyi-app && npm install && npm run serve   # 学生端 H5
+# 管理端（ruoyi-ui）：vue-cli 4 + webpack4，端口 80，代理 /dev-api → localhost:8081
+cd ruoyi-ui  && npm install && npm run dev
+# Node 17+ 必须加：export NODE_OPTIONS=--openssl-legacy-provider
+
+# C 端 H5（ruoyi-app）：vue-cli 5 + webpack5，端口 84（写在 ruoyi-app/vue.config.js 里），
+#                     同样代理 /dev-api → localhost:8081
+cd ruoyi-app && npm install && npm run dev
 ```
+
+> **两个前端都依赖后端跑在 8081**：`vue.config.js` 里的代理目标写死为 `http://localhost:8081`。
+> 后端换端口的话，页面能打开但所有接口 404。
 
 ### 5. 默认账号
 
-| 账号 | 密码 | 角色 |
+| 账号 | 密码 | 说明 |
 |---|---|---|
-| `admin` | `admin123` | 超级管理员（拥有 `*:*:*`，无需分配菜单权限） |
+| `admin` | `admin123` | 超级管理员（拥有 `*:*:*`，无需分配菜单权限），管理端与 C 端都可登录 |
+| `sellertest` | `abc123456` | C 端卖家测试账号（端到端验证脚本创建） |
+| `buyertest` | `abc123456` | C 端买家测试账号（端到端验证脚本创建） |
 | 自助注册 | — | C 端用户（框架参数 `sys.account.registerUser` 已置为 true） |
 
 > 生产部署请第一时间修改 admin 密码、替换 `JWT_SECRET`、关闭接口文档与 Druid 监控台。
