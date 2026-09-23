@@ -197,15 +197,18 @@ cd ruoyi-app && npm install && npm run dev
 ## 六、已验证的内容
 
 以下都是在本地真机跑出来的，不是"理论上应该可以"：
+**验证脚本都在 [`scripts/`](scripts/README.md)，可以直接复跑。**
 
 ```bash
 mvn clean package                     # BUILD SUCCESS，7 个模块
 java -jar ruoyi-admin.jar             # Started RuoYiApplication in 11.7s
+python scripts/verify_api.py          # 通过 35 项，失败 0 项
+python scripts/cache_verify.py        # 通过 13 项，失败 0 项
 ```
 
 - 数据库脚本从零执行：51 张表，零报错；分类、菜单、字典等初始化数据齐全
-- 端到端接口用例 **35 项全通过**，覆盖：
-  - 验证码（读 Redis）→ 登录 → JWT 鉴权
+- 端到端接口用例 **48 项全通过**（35 项业务 + 13 项缓存专项），覆盖：
+  - 验证码（读 Redis）→ 登录 → JWT 鉴权 → `/logout`（token 真的失效）
   - 商品发布（忽略请求体伪造的 `auditStatus`/`publisherId`）→ 管理员审核 → 上架
   - 商品详情缓存写入 / TTL / 主动失效
   - 越权防护（买家改/删他人商品均返回 403）
@@ -214,6 +217,17 @@ java -jar ruoyi-admin.jar             # Started RuoYiApplication in 11.7s
   - 并发下单：同一商品 5 次下单只成功 1 单（条件更新抢单）
 - 接口文档 / Druid 监控台开关：关闭后 `/v3/api-docs`、`/swagger-ui`、`/druid` 均返回 401，
   业务接口不受影响
+
+### 缓存压测（`scripts/bench_goods.py`，64 并发 × 10 秒）
+
+| 指标 | 缓存关 | 缓存开 | 变化 |
+|---|---|---|---|
+| QPS | 2628 | **19044** | **×7.2** |
+| 平均延迟 | 22.29 ms | 3.12 ms | ↓ 86% |
+| P95 | 32.86 ms | 7.22 ms | ↓ 78% |
+
+复现：加 `--biz.cache.enabled=false` 启动即为"缓存关"。
+差距主要来自数据库连接池（Druid `maxActive=20`）—— 缓存命中后请求根本不碰数据库。
 
 ---
 

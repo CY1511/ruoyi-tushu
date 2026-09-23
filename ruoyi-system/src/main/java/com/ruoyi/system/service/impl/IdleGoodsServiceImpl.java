@@ -8,6 +8,7 @@ import com.ruoyi.common.exception.ServiceException;
 import com.ruoyi.common.utils.DateUtils;
 import com.ruoyi.common.utils.SecurityUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import com.ruoyi.system.mapper.IdleGoodsMapper;
@@ -51,6 +52,17 @@ public class IdleGoodsServiceImpl implements IIdleGoodsService
     @Autowired
     private RedisCache redisCache;
 
+    /**
+     * 业务缓存开关，默认开启。
+     *
+     * <p>留这个开关是为了能做真实的压测对比：以
+     * {@code --biz.cache.enabled=false} 启动，读路径就完全走数据库，
+     * 与开启缓存时的 QPS / P95 延迟直接对比（见 {@code scripts/bench_goods.py}）。
+     * 生产环境不需要动它。</p>
+     */
+    @Value("${biz.cache.enabled:true}")
+    private boolean cacheEnabled;
+
     // =========================================================================
     // 商品详情缓存
     // =========================================================================
@@ -70,6 +82,11 @@ public class IdleGoodsServiceImpl implements IIdleGoodsService
         if (goodsId == null)
         {
             return null;
+        }
+        // 缓存关闭时（压测对比用）完全走库
+        if (!cacheEnabled)
+        {
+            return idleGoodsMapper.selectIdleGoodsByGoodsId(goodsId);
         }
         String key = CACHE_KEY_PREFIX + goodsId;
         IdleGoods cached = redisCache.getCacheObject(key);
