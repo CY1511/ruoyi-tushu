@@ -92,4 +92,22 @@ public interface IdleFavoriteMapper
      * @return 收藏数量
      */
     public int countFavoritesByUserId(Long userId);
+
+    /**
+     * 删除某个商品上的全部收藏记录
+     * <p>idle_favorite 没有外键约束，商品硬删除后收藏行不会跟着消失，
+     * 会留在收藏列表里 join 出空行，所以删除商品时必须显式清理。</p>
+     *
+     * @param goodsId 商品ID
+     * @return 结果
+     */
+    public int deleteIdleFavoriteByGoodsId(@org.apache.ibatis.annotations.Param("goodsId") Long goodsId);
+
+    /**
+     * 批量删除若干商品上的收藏记录
+     *
+     * @param goodsIds 商品主键数组
+     * @return 结果
+     */
+    public int deleteIdleFavoriteByGoodsIds(@org.apache.ibatis.annotations.Param("goodsIds") Long[] goodsIds);
 }

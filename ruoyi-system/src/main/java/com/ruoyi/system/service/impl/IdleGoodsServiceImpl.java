@@ -11,6 +11,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import com.ruoyi.system.mapper.IdleFavoriteMapper;
 import com.ruoyi.system.mapper.IdleGoodsMapper;
 import com.ruoyi.system.domain.IdleGoods;
 import com.ruoyi.system.service.IIdleGoodsService;
@@ -48,6 +52,9 @@ public class IdleGoodsServiceImpl implements IIdleGoodsService
 
     @Autowired
     private IdleGoodsMapper idleGoodsMapper;
+
+    @Autowired
+    private IdleFavoriteMapper idleFavoriteMapper;
 
     @Autowired
     private RedisCache redisCache;
@@ -104,6 +111,9 @@ public class IdleGoodsServiceImpl implements IIdleGoodsService
 
     /**
      * 删除单个商品详情缓存
+     *
+     * <p>失效动作推迟到事务提交之后：在事务里就删缓存的话，提交前的并发读会
+     * 用旧行数据把缓存重新填回去，脏窗口反而最长持续到 TTL 到期。</p>
      */
     private void evictGoodsCache(Long goodsId)
     {
@@ -111,7 +121,7 @@ public class IdleGoodsServiceImpl implements IIdleGoodsService
         {
             return;
         }
-        redisCache.deleteObject(CACHE_KEY_PREFIX + goodsId);
+        runAfterCommit(() -> redisCache.deleteObject(CACHE_KEY_PREFIX + goodsId));
     }
 
     /**
@@ -119,10 +129,34 @@ public class IdleGoodsServiceImpl implements IIdleGoodsService
      */
     private void clearGoodsCache()
     {
-        Collection<String> keys = redisCache.keys(CACHE_KEY_PREFIX + "*");
-        if (keys != null && !keys.isEmpty())
+        runAfterCommit(() -> {
+            Collection<String> keys = redisCache.keys(CACHE_KEY_PREFIX + "*");
+            if (keys != null && !keys.isEmpty())
+            {
+                redisCache.deleteObject(keys);
+            }
+        });
+    }
+
+    /**
+     * 当前有事务时，把动作注册到提交之后执行；没有事务则立刻执行。
+     */
+    private void runAfterCommit(Runnable action)
+    {
+        if (TransactionSynchronizationManager.isSynchronizationActive())
         {
-            redisCache.deleteObject(keys);
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization()
+            {
+                @Override
+                public void afterCommit()
+                {
+                    action.run();
+                }
+            });
+        }
+        else
+        {
+            action.run();
         }
     }
 
@@ -185,8 +219,13 @@ public class IdleGoodsServiceImpl implements IIdleGoodsService
      * @return 结果
      */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public int deleteIdleGoodsByGoodsIds(Long[] goodsIds)
     {
+        if (goodsIds != null && goodsIds.length > 0)
+        {
+            idleFavoriteMapper.deleteIdleFavoriteByGoodsIds(goodsIds);
+        }
         int rows = idleGoodsMapper.deleteIdleGoodsByGoodsIds(goodsIds);
         clearGoodsCache();
         return rows;
@@ -199,8 +238,10 @@ public class IdleGoodsServiceImpl implements IIdleGoodsService
      * @return 结果
      */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public int deleteIdleGoodsByGoodsId(Long goodsId)
     {
+        idleFavoriteMapper.deleteIdleFavoriteByGoodsId(goodsId);
         int rows = idleGoodsMapper.deleteIdleGoodsByGoodsId(goodsId);
         evictGoodsCache(goodsId);
         return rows;
@@ -215,6 +256,18 @@ public class IdleGoodsServiceImpl implements IIdleGoodsService
     @Override
     public int auditIdleGoods(IdleGoods idleGoods)
     {
+        if (!IdleGoods.AUDIT_PASSED.equals(idleGoods.getAuditStatus())
+                && !IdleGoods.AUDIT_REJECTED.equals(idleGoods.getAuditStatus()))
+        {
+            throw new ServiceException("审核结果只能是「通过」或「驳回」");
+        }
+        IdleGoods existing = requireGoods(idleGoods.getGoodsId());
+        // 状态守卫放在服务端：前端"只在待审核时显示审核按钮"只是体验优化，
+        // 不能作为唯一屏障 —— 两个人同时点审核、或绕过界面直接调接口都会打穿它。
+        if (!IdleGoods.AUDIT_PENDING.equals(existing.getAuditStatus()))
+        {
+            throw new ServiceException("该商品当前不是待审核状态，无需重复审核");
+        }
         // audit_user 存的是审核人ID：IdleGoodsMapper 用 `g.audit_user = u2.user_id` 关联 sys_user
         // 取用户名，前端审核人下拉框传的也是 userId。原来写入 SecurityUtils.getUsername()，
         // 与关联条件语义相反，导致列表里「审核人名称」永远为空。
@@ -241,6 +294,16 @@ public class IdleGoodsServiceImpl implements IIdleGoodsService
     @Override
     public int onlineIdleGoods(Long goodsId)
     {
+        IdleGoods existing = requireGoods(goodsId);
+        if (!IdleGoods.AUDIT_PASSED.equals(existing.getAuditStatus()))
+        {
+            throw new ServiceException("未通过审核的商品不能上架");
+        }
+        if (IdleGoods.STATUS_SOLD.equals(existing.getGoodsStatus())
+                || IdleGoods.STATUS_BOOKED.equals(existing.getGoodsStatus()))
+        {
+            throw new ServiceException("已售出或已被预订的商品不能上架");
+        }
         IdleGoods idleGoods = new IdleGoods();
         idleGoods.setGoodsId(goodsId);
         idleGoods.setGoodsStatus(IdleGoods.STATUS_ON_SALE);
@@ -259,6 +322,15 @@ public class IdleGoodsServiceImpl implements IIdleGoodsService
     @Override
     public int offlineIdleGoods(Long goodsId)
     {
+        IdleGoods existing = requireGoods(goodsId);
+        if (IdleGoods.STATUS_SOLD.equals(existing.getGoodsStatus()))
+        {
+            throw new ServiceException("已售出的商品不能下架");
+        }
+        if (IdleGoods.STATUS_OFFLINE.equals(existing.getGoodsStatus()))
+        {
+            throw new ServiceException("商品已经是下架状态");
+        }
         IdleGoods idleGoods = new IdleGoods();
         idleGoods.setGoodsId(goodsId);
         idleGoods.setGoodsStatus(IdleGoods.STATUS_OFFLINE);
@@ -323,14 +395,59 @@ public class IdleGoodsServiceImpl implements IIdleGoodsService
 
     /**
      * 删除我发布的商品（C 端）
+     *
+     * <p>商品是硬删除，而 idle_favorite / idle_order 没有外键约束，跟着走的数据
+     * 要自己处理干净：收藏记录一并删掉（否则收藏列表 join 出空行），
+     * 有交易记录的商品拒绝删除（否则订单会指向一个不存在的商品）。</p>
      */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public int deleteMyGoods(Long goodsId)
     {
-        requireOwnerGoods(goodsId);
+        IdleGoods existing = requireOwnerGoods(goodsId);
+        if (IdleGoods.STATUS_BOOKED.equals(existing.getGoodsStatus())
+                || IdleGoods.STATUS_SOLD.equals(existing.getGoodsStatus()))
+        {
+            throw new ServiceException("商品已有交易记录，不能删除");
+        }
+        idleFavoriteMapper.deleteIdleFavoriteByGoodsId(goodsId);
         int rows = idleGoodsMapper.deleteIdleGoodsByGoodsId(goodsId);
         evictGoodsCache(goodsId);
         return rows;
+    }
+
+    /**
+     * 下架我发布的商品（C 端）
+     */
+    @Override
+    public int offlineMyGoods(Long goodsId)
+    {
+        IdleGoods existing = requireOwnerGoods(goodsId);
+        if (!IdleGoods.STATUS_ON_SALE.equals(existing.getGoodsStatus()))
+        {
+            throw new ServiceException("只有上架中的商品可以下架");
+        }
+        return offlineIdleGoods(goodsId);
+    }
+
+    /**
+     * 重新上架我发布的商品（C 端）
+     */
+    @Override
+    public int onlineMyGoods(Long goodsId)
+    {
+        IdleGoods existing = requireOwnerGoods(goodsId);
+        // 先问"过审没有"再问"是不是下架态"：没过审时哪怕状态对也不该上架，
+        // 与管理端 onlineIdleGoods 的守卫顺序保持一致
+        if (!IdleGoods.AUDIT_PASSED.equals(existing.getAuditStatus()))
+        {
+            throw new ServiceException("商品尚未通过审核，请编辑商品后重新提交审核");
+        }
+        if (!IdleGoods.STATUS_OFFLINE.equals(existing.getGoodsStatus()))
+        {
+            throw new ServiceException("只有已下架的商品可以重新上架");
+        }
+        return onlineIdleGoods(goodsId);
     }
 
     /**
@@ -393,12 +510,12 @@ public class IdleGoodsServiceImpl implements IIdleGoodsService
     }
 
     /**
-     * 校验商品归属：不存在或不是当前用户的商品，一律拒绝
+     * 取库里的商品，不存在直接拒绝（状态守卫的前置）
      *
      * @param goodsId 商品ID
      * @return 数据库中的商品
      */
-    private IdleGoods requireOwnerGoods(Long goodsId)
+    private IdleGoods requireGoods(Long goodsId)
     {
         if (goodsId == null)
         {
@@ -409,6 +526,18 @@ public class IdleGoodsServiceImpl implements IIdleGoodsService
         {
             throw new ServiceException("商品不存在");
         }
+        return goods;
+    }
+
+    /**
+     * 校验商品归属：不存在或不是当前用户的商品，一律拒绝
+     *
+     * @param goodsId 商品ID
+     * @return 数据库中的商品
+     */
+    private IdleGoods requireOwnerGoods(Long goodsId)
+    {
+        IdleGoods goods = requireGoods(goodsId);
         Long currentUserId = SecurityUtils.getUserId();
         if (!currentUserId.equals(goods.getPublisherId()))
         {

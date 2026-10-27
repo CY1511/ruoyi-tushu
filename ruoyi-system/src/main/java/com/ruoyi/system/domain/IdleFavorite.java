@@ -1,5 +1,6 @@
 package com.ruoyi.system.domain;
 
+import java.math.BigDecimal;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import org.apache.commons.lang3.builder.ToStringStyle;
 import com.ruoyi.common.annotation.Excel;
@@ -29,7 +30,7 @@ public class IdleFavorite extends BaseEntity
     /** 联表商品字段 */
     private String goodsName;
     private String coverImage;
-    private Double price;
+    private BigDecimal price;
     private String qualityLevel;
     private String goodsStatus;
 
@@ -83,12 +84,12 @@ public class IdleFavorite extends BaseEntity
         return coverImage;
     }
 
-    public void setPrice(Double price)
+    public void setPrice(BigDecimal price)
     {
         this.price = price;
     }
 
-    public Double getPrice()
+    public BigDecimal getPrice()
     {
         return price;
     }

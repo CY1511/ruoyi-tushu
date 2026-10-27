@@ -5,6 +5,7 @@ import java.util.concurrent.TimeUnit;
 import com.ruoyi.common.core.redis.RedisCache;
 import com.ruoyi.common.utils.DateUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import com.ruoyi.system.mapper.IdleCategoryMapper;
 import com.ruoyi.system.domain.IdleCategory;
@@ -36,6 +37,10 @@ public class IdleCategoryServiceImpl implements IIdleCategoryService
     @Autowired
     private RedisCache redisCache;
 
+    /** 与商品详情缓存共用同一个压测开关，见 {@code IdleGoodsServiceImpl#cacheEnabled} */
+    @Value("${biz.cache.enabled:true}")
+    private boolean cacheEnabled;
+
     /**
      * 查询商品分类
      * 
@@ -66,16 +71,19 @@ public class IdleCategoryServiceImpl implements IIdleCategoryService
     @Override
     public List<IdleCategory> selectEnabledCategoryList()
     {
-        List<IdleCategory> cached = redisCache.getCacheObject(CACHE_KEY);
-        if (cached != null && !cached.isEmpty())
+        if (cacheEnabled)
         {
-            return cached;
+            List<IdleCategory> cached = redisCache.getCacheObject(CACHE_KEY);
+            if (cached != null && !cached.isEmpty())
+            {
+                return cached;
+            }
         }
         IdleCategory query = new IdleCategory();
         // 0 = 正常（与框架字典 sys_normal_disable 一致）
         query.setStatus("0");
         List<IdleCategory> list = idleCategoryMapper.selectIdleCategoryList(query);
-        if (list != null && !list.isEmpty())
+        if (cacheEnabled && list != null && !list.isEmpty())
         {
             redisCache.setCacheObject(CACHE_KEY, list, CACHE_TTL_HOURS, TimeUnit.HOURS);
         }

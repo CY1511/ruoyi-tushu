@@ -196,6 +196,11 @@ public class IdleOrderServiceImpl implements IIdleOrderService
 
     /**
      * 通用状态流转
+     *
+     * <p>注意：本方法是被同类其它流转入口以 {@code this.changeStatus(...)} 调用的，
+     * Spring 代理不会拦截类内部调用，因此事务注解必须同时挂在各个对外入口方法上
+     * （acceptOrder / confirmReceipt / cancelOrder / changeStatusByAdmin），
+     * 否则"改订单 + 同步商品 + 写流转日志"三步会跑在事务外。</p>
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -219,6 +224,7 @@ public class IdleOrderServiceImpl implements IIdleOrderService
      * 卖家确认接单
      */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public int acceptOrder(Long orderId)
     {
         IdleOrder order = requireOrder(orderId);
@@ -230,6 +236,7 @@ public class IdleOrderServiceImpl implements IIdleOrderService
      * 买家确认收货
      */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public int confirmReceipt(Long orderId)
     {
         IdleOrder order = requireOrder(orderId);
@@ -241,6 +248,7 @@ public class IdleOrderServiceImpl implements IIdleOrderService
      * 取消订单
      */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public int cancelOrder(Long orderId, String reason)
     {
         IdleOrder order = requireOrder(orderId);
@@ -258,6 +266,7 @@ public class IdleOrderServiceImpl implements IIdleOrderService
      * 管理端强制流转
      */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public int changeStatusByAdmin(Long orderId, String targetCode, String remark)
     {
         return changeStatus(orderId, IdleOrderStatus.of(targetCode), remark);

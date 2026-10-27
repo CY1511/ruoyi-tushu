@@ -75,4 +75,26 @@ public class AppGoodsController extends BaseController
     {
         return toAjax(idleGoodsService.deleteMyGoods(goodsId));
     }
+
+    /**
+     * 下架我的商品（需登录，归属由 Service 校验）
+     *
+     * <p>单独开一条接口而不是复用修改接口：修改商品会按规则重新进入待审核，
+     * 而"下架"只是把在售状态关掉，两者语义不同，混在一起就会出现
+     * "点了下架、商品却被打回待审核"的错误行为。</p>
+     */
+    @Log(title = "C端商品", businessType = BusinessType.UPDATE)
+    @PutMapping("/offline/{goodsId}")
+    public AjaxResult offline(@PathVariable Long goodsId)
+    {
+        return toAjax(idleGoodsService.offlineMyGoods(goodsId));
+    }
+
+    /** 重新上架我的商品（需登录，仅已过审且已下架的商品） */
+    @Log(title = "C端商品", businessType = BusinessType.UPDATE)
+    @PutMapping("/online/{goodsId}")
+    public AjaxResult online(@PathVariable Long goodsId)
+    {
+        return toAjax(idleGoodsService.onlineMyGoods(goodsId));
+    }
 }

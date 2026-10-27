@@ -125,6 +125,24 @@ public interface IIdleGoodsService
     public int deleteMyGoods(Long goodsId);
 
     /**
+     * 下架我发布的商品（C 端）
+     * <p>只改商品状态，不触发重新审核 —— 与「修改商品信息」是两件事。</p>
+     *
+     * @param goodsId 商品信息主键
+     * @return 结果
+     */
+    public int offlineMyGoods(Long goodsId);
+
+    /**
+     * 重新上架我发布的商品（C 端）
+     * <p>只有审核已通过且处于已下架状态的商品才能直接上架。</p>
+     *
+     * @param goodsId 商品信息主键
+     * @return 结果
+     */
+    public int onlineMyGoods(Long goodsId);
+
+    /**
      * 查询商品详情（C 端可见性规则）
      * <p>已审核通过且未下架的商品对所有人可见；其余状态只有发布者本人能看，
      * 避免未过审 / 已下架商品被按 ID 直接访问。</p>

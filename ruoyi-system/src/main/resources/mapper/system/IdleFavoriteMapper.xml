@@ -96,4 +96,15 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     <select id="countFavoritesByUserId" parameterType="Long" resultType="int">
         select count(*) from idle_favorite where user_id = #{userId}
     </select>
+
+    <delete id="deleteIdleFavoriteByGoodsId">
+        delete from idle_favorite where goods_id = #{goodsId}
+    </delete>
+
+    <delete id="deleteIdleFavoriteByGoodsIds">
+        delete from idle_favorite where goods_id in
+        <foreach item="goodsId" collection="goodsIds" open="(" separator="," close=")">
+            #{goodsId}
+        </foreach>
+    </delete>
 </mapper>
