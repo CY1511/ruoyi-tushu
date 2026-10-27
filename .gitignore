@@ -47,8 +47,6 @@ nbdist/
 !*/build/*.xml
 
 # Work directories
-ppt_workspace/
-slides_workspace/
 node_modules/
 *.iml
 

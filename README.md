@@ -51,7 +51,7 @@
 ## 三、目录结构
 
 ```
-rouyi-tushu
+ruoyi-tushu
 ├── ruoyi-admin        # 启动类、web 层（controller）、配置文件
 ├── ruoyi-framework    # 框架核心：Security / Redis / AOP / 数据源等配置
 ├── ruoyi-system       # 业务核心：domain / mapper / service（业务代码都在这里）
@@ -61,7 +61,9 @@ rouyi-tushu
 ├── ruoyi-ui           # 管理端前端（Vue2 + Element UI）
 ├── ruoyi-app          # 学生端 H5（Vue2，独立工程）
 ├── sql                # 数据库脚本（唯一来源，见 sql/README.md）
-└── doc / bin / ry.sh  # 部署文档与启动脚本
+├── scripts            # 接口验证、缓存验证、压测脚本（见 scripts/README.md）
+├── docs               # 业务流程与接口文档
+└── bin / ry.sh        # 构建与启动脚本
 ```
 
 > 业务代码的边界是明确划分的：`ruoyi-system` 只放 domain/mapper/service，
@@ -302,7 +304,8 @@ cd ruoyi-app && npm install && npm run dev
   「闲置交易（业务）」/「系统管理（框架）」/「测试模块」（`application.yml` 的 `springdoc.group-configs`）。
   业务 Controller 没有写 `@Operation` 注解，在线文档给出的是接口清单
   （路径、方法、参数与返回模型），字段级含义看下面这份 markdown。
-- 商品 / 订单 / 收藏接口详细说明：[`商品管理接口文档.md`](商品管理接口文档.md)
+- 商品 / 订单 / 收藏接口详细说明：[`docs/商品管理接口文档.md`](docs/商品管理接口文档.md)
+- 业务流程（角色、商品生命周期、订单流转、异常分支）：[`docs/业务流程.md`](docs/业务流程.md)
 - 部署与上线检查清单：[`DEPLOY.md`](DEPLOY.md)
 - 数据库脚本顺序与表结构依据：[`sql/README.md`](sql/README.md)
 - 验证与压测脚本：[`scripts/README.md`](scripts/README.md)
