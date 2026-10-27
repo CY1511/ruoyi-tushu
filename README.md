@@ -14,8 +14,8 @@
 
 | 模块 | 说明 |
 |---|---|
-| 商品 | 发布、编辑、删除、按分类/关键词浏览、详情查看 |
-| 商品审核 | 发布后进入待审核，审核通过才在列表露出；编辑后重新进入待审核 |
+| 商品 | 发布、编辑、删除、**上架/下架**、按分类/关键词浏览、详情查看 |
+| 商品审核 | 发布后进入待审核，审核通过才在列表露出；**编辑**后重新进入待审核；**下架不回退审核状态**（独立接口，见下） |
 | 收藏 | 收藏/取消收藏、我的收藏、是否已收藏 |
 | 订单 | 下单、卖家接单、买家确认收货、取消订单、买卖双方订单列表 |
 | 我的 | 我发布的商品、统计数据（发布数/订单数/收藏数） |
@@ -80,11 +80,15 @@ rouyi-tushu
 | `start-dev.bat` | 清理残留进程 → 缺 jar 则自动打包 → 起后端 8081 → 两侧前端缺依赖则自动装 → 起管理端 80 与 C 端 84 |
 | `stop-dev.bat` | 按端口精确结束进程（不会误杀其他 java / node） |
 
-脚本内已处理三个环境坑，手动启动时同样需要注意：
+脚本内已处理四个环境坑，手动启动时同样需要注意：
 
 1. **随机端口**：沙箱/IDE 注入的 `SERVER__PORT`、`SERVER__HOST` 会把 Spring Boot 顶到随机端口，导致前端代理打不通，必须清掉后用 `--server.port=8081` 指定；
 2. **jar 被锁**：只要 `java` 进程还开着，Windows 会锁住 jar，`mvn package` 会报成功但产物根本没换，跑起来还是旧代码 —— 打包前必须先杀进程；
-3. **Node 17+ 跑 webpack4**：前端必须带 `NODE_OPTIONS=--openssl-legacy-provider`，否则报 `ERR_OSSL_EVP_UNSUPPORTED`。
+3. **Node 17+ 跑 webpack4**：前端必须带 `NODE_OPTIONS=--openssl-legacy-provider`，否则报 `ERR_OSSL_EVP_UNSUPPORTED`；
+4. **删过文件必须 `clean package`**：只 `package` 时，`target/classes` 里被删掉的 Mapper XML 不会消失，
+   打进 jar 后 MyBatis 仍然去解析它，结果是"代码删干净了、启动却报 `Could not resolve type alias`"；
+   而且 `ruoyi-admin` 的 jar 插件对自己模块外的变化不敏感，可能继续嵌着旧的 `ruoyi-system`。
+   改了 `ruoyi-system` 却看不到效果，先怀疑这一条。
 
 ### 1. 建库（必须按顺序执行）
 
@@ -96,9 +100,10 @@ mysql -uroot -p --default-character-set=utf8mb4 ry_tushu < sql/quartz.sql       
 mysql -uroot -p --default-character-set=utf8mb4 ry_tushu < sql/v1.0.0_business_tables.sql # 业务表 + 初始化数据
 mysql -uroot -p --default-character-set=utf8mb4 ry_tushu < sql/v1.2.0_order_status_log.sql# 订单流转日志表
 mysql -uroot -p --default-character-set=utf8mb4 ry_tushu < sql/v1.3.0_business_menu.sql   # 业务菜单与按钮权限
+mysql -uroot -p --default-character-set=utf8mb4 ry_tushu < sql/v1.4.0_drop_legacy_and_index.sql # 清理二代残留 + 商品列表复合索引
 ```
 
-脚本清单、表结构定稿依据、两代业务模型的说明都写在 **[`sql/README.md`](sql/README.md)**。
+脚本清单、表结构定稿依据、二代模型的移除说明都写在 **[`sql/README.md`](sql/README.md)**。
 
 ### 2. 配置数据源（不要改代码，用环境变量）
 
@@ -109,8 +114,10 @@ mysql -uroot -p --default-character-set=utf8mb4 ry_tushu < sql/v1.3.0_business_m
 | `DB_HOST` / `DB_PORT` | `localhost` / `3306` | 数据库地址 |
 | `DB_NAME` | `ry_tushu` | 库名 |
 | `DB_USERNAME` / `DB_PASSWORD` | `root` / 空 | 账号密码 |
-| `JWT_SECRET` | 内置默认值 | **生产必须替换** |
-| `SWAGGER_ENABLED` | `true` | 生产建议 `false` |
+| `JWT_SECRET` | 内置默认值 | **生产必须替换**（默认值在仓库里，等于公开） |
+| `SWAGGER_ENABLED` | `true` | 生产建议 `false`，关掉后文档/Druid 一律 401 |
+| `LOG_LEVEL_APP` | `debug` | 生产建议 `info`；`debug` 会把每条 SQL 打进日志 |
+| `DRUID_USERNAME` / `DRUID_PASSWORD` | `admin` / 空 | 用监控台就必须设强口令 |
 
 ### 3. 启动后端
 
@@ -170,9 +177,15 @@ cd ruoyi-app && npm install && npm run dev
 - 状态枚举与合法流转表集中在 `IdleOrderStatus`，业务代码里不再散落 `if`
 - 每次成功流转都往 `idle_order_status_log` 写一条记录（订单号、变更前后状态、
   操作人、角色 BUYER/SELLER/ADMIN、备注、时间），与订单更新**同一事务**
+- **事务注解挂在每个对外入口上**（`acceptOrder` / `confirmReceipt` / `cancelOrder` /
+  `changeStatusByAdmin`），不能只挂在内部的 `changeStatus` 上 —— 那些入口是用
+  `this.changeStatus(...)` 调它的，Spring 代理拦不到类内部调用，只标内部方法等于没标
 - 通用修改接口 `updateIdleOrder` 拒绝携带 `orderStatus`，从入口堵死绕过校验
 - 管理端「流转」弹窗的可选状态由后端 `GET /system/order/nextStatus/{orderId}` 下发，
   界面上根本选不出非法状态
+- 商品侧同样补了状态守卫：`auditIdleGoods` 只接受"待审核"的商品、审核结果只能是
+  通过/驳回，上架必须是已过审 —— 前端"只在待审核时显示审核按钮"是体验优化，
+  不能当成唯一屏障
 
 ### 2. 缓存设计（cache-aside + 主动失效）
 
@@ -182,9 +195,13 @@ cd ruoyi-app && npm install && npm run dev
 | 启用分类列表 | `idleCategory:all` | 2 小时 | 分类增/删/改 |
 
 - **正确性靠主动失效**：商品一下架缓存立刻删掉，否则会出现"已下架商品还能被看到并下单"
+- **失效动作延迟到事务提交之后**：在事务里就删缓存，提交前的并发读会用旧行数据把缓存
+  重新填回去，脏窗口反而拉到 TTL 到期。统一走 `runAfterCommit(...)`
+  （有事务就注册 afterCommit 回调，没事务则立即删）
 - **TTL 只做兜底**：万一某条写路径漏了删除，最多脏 10 分钟
 - 缓存的是**原始行数据**，可见性判断（未过审/已下架只有发布者可见）留在请求级逻辑里，
   不把"某个用户看到的视图"缓存进 Redis
+- 压测开关 `--biz.cache.enabled=false` 同时管着商品详情和分类列表两条读路径
 
 > 实现上没有用 `@Cacheable/@CacheEvict`，原因写在 `IdleGoodsServiceImpl` 类注释里：
 > 本机 Redis 3.2（Windows 版）+ Spring Data Redis 4 的组合下，
@@ -194,31 +211,47 @@ cd ruoyi-app && npm install && npm run dev
 
 ---
 
-## 六、已验证的内容
+## 六、如何验证
 
-以下都是在本地真机跑出来的，不是"理论上应该可以"：
-**验证脚本都在 [`scripts/`](scripts/README.md)，可以直接复跑。**
+验证脚本都在 [`scripts/`](scripts/README.md)，可以直接复跑；**只要有断言失败，脚本就以退出码 1 结束**，
+不看输出内容也能被 CI / `&&` 串联卡住。
 
-```bash
-mvn clean package                     # BUILD SUCCESS，7 个模块
-java -jar ruoyi-admin.jar             # Started RuoYiApplication in 11.7s
-python scripts/verify_api.py          # 通过 35 项，失败 0 项
-python scripts/cache_verify.py        # 通过 13 项，失败 0 项
-```
+| 手段 | 覆盖 | 依赖 |
+|---|---|---|
+| `mvn -B -DskipTests package` | 7 个模块编译打包 | JDK 17+；GitHub Actions 每次 push 自动跑 |
+| `python scripts/verify_api.py` | 业务闭环 + 越权 + 状态机 + 并发抢单 + 收藏 + 分类缓存 + 商品上下架 | 后端 + MySQL + Redis |
+| `python scripts/cache_verify.py` | 缓存读命中 / 写路径失效 / 失效后读到新值 / TTL 兜底 | 同上（需先跑 `verify_api.py` 建数据） |
+| `python scripts/verify_logout.py` | `/logout` 后 Redis 里令牌真删除、旧 token 再访问返 401 | 后端 + Redis |
+| `python scripts/bench_goods.py` | 缓存开 / 关的 QPS 与延迟对比 | 后端 |
+| `cd ruoyi-app && npm run build` | H5 编译 | Node 16+ |
 
-- 数据库脚本从零执行：51 张表，零报错；分类、菜单、字典等初始化数据齐全
-- 端到端接口用例 **48 项全通过**（35 项业务 + 13 项缓存专项），覆盖：
-  - 验证码（读 Redis）→ 登录 → JWT 鉴权 → `/logout`（token 真的失效）
-  - 商品发布（忽略请求体伪造的 `auditStatus`/`publisherId`）→ 管理员审核 → 上架
-  - 商品详情缓存写入 / TTL / 主动失效
-  - 越权防护（买家改/删他人商品均返回 403）
-  - 订单状态机：合法流转落日志、非法流转被拦截、终态不可再改、
-    买家不能替卖家接单、通用接口拒绝改状态
-  - 并发下单：同一商品 5 次下单只成功 1 单（条件更新抢单）
+断言都是**回查 MySQL / Redis**，不是只看接口 `code=200`。覆盖的关键点：
+
+- 验证码（读 Redis）→ 登录 → JWT 鉴权 → `/logout`（token 真的失效）
+- 商品发布（服务端忽略请求体伪造的 `auditStatus` / `publisherId`）→ 管理员审核 → 上架
+- 越权防护：买家改 / 删他人商品 403；买家替卖家确认接单 403；非交易方取消订单被拒
+- 订单状态机：合法流转落日志、非法流转被拦截、终态不可再改、通用接口拒绝携带 `orderStatus`
+- **抢单是真并发**：`GRAB_THREADS`（默认 8）个线程卡在 `threading.Barrier` 上同一瞬间下单，
+  断言"成功 1 单、库里 1 条订单"。旧脚本是串行 `for` 循环点 5 次，那只能证明
+  "第二次因为状态已变而失败"，证明不了竞态下的条件更新只放行一条 —— 本次已改写
+- 每个流转入口都在同一事务里"改订单 + 同步商品 + 写日志"（事务注解必须挂在入口方法上，
+  只标内部 `changeStatus` 会被类内部调用绕过代理）
+- 收藏闭环：切换 / 我的收藏 / 管理端按商品筛选 / **删除商品时级联清理收藏**
+- **下架不回退审核状态**；未过审商品不能直接上架；重复审核被服务端状态守卫拦截
+- 商品详情缓存写入 / TTL / 主动失效 / 失效后下一次读到新值
 - 接口文档 / Druid 监控台开关：关闭后 `/v3/api-docs`、`/swagger-ui`、`/druid` 均返回 401，
   业务接口不受影响
+- 数据库脚本按 [`sql/README.md`](sql/README.md) 的顺序从零执行；`v1.4.0` 幂等，可重复执行
 
-### 缓存压测（`scripts/bench_goods.py`，64 并发 × 10 秒）
+> 断言条数不写死在这里：用例只增不删，写死的数字一定会过期。
+> 跑一遍看最后一行「通过 N 项，失败 0 项」即可。
+
+> 最近一次全量复跑（2026-10-27，本机 MySQL 5.7 + Redis）：
+> 六个建库脚本零报错、共 38 张表；`verify_api.py` **55 项通过 / 0 失败**、
+> `cache_verify.py` **14 项通过 / 0 失败**、`verify_logout.py` 三项确认；
+> 已删除的二代接口带 token 访问返回 `No static resource`，匿名访问统一 401。
+
+### 缓存压测（`scripts/bench_goods.py`，64 并发 × 10 秒，2026-09-23 本机实测）
 
 | 指标 | 缓存关 | 缓存开 | 变化 |
 |---|---|---|---|
@@ -233,24 +266,46 @@ python scripts/cache_verify.py        # 通过 13 项，失败 0 项
 
 ## 七、已知技术债（后续计划）
 
-1. **两代业务模型并存**：`idle_*`（教材闲置交易，当前主线，有管理端页面）与
-   `book/course/cart/orders`（早期版本，代码仍在、无管理端页面）。
-   建议后续删掉第 ② 代代码与表，能显著降低维护成本 —— 属于结构性改动，需单独评估。
-2. **前端技术栈偏旧**：Vue 2.6 已于 2023 年底停止维护，中期建议升级 Vue 3 + Element Plus + Vite。
-3. **钱包功能只有表与 Mapper**：`Wallet`/`WalletRecord` 没有 Service 与页面，
+> 已了结的一项：**两代业务模型并存**。`book/course/cart/orders/user` 一套（无管理端页面、
+> 无前端调用，但接口全部可路由，其中 `/user/login` 是明文口令比对、`/user/update` 无归属校验）
+> 已在 v1.4.0 连同代码与表一起删除，详见 [`sql/README.md`](sql/README.md) 第三节。
+
+1. **前端技术栈偏旧**：Vue 2.6 已于 2023 年底停止维护，中期建议升级 Vue 3 + Element Plus + Vite。
+   顺带能解决两个前端各写一份 `request` / token / 登录态的问题（`ruoyi-ui` 用 Cookie、`ruoyi-app` 用 localStorage）。
+2. **状态标签没有字典化**：商品状态、成色、订单状态的文案与配色在两个前端各抄了一遍
+   （合起来十几处），SQL 里也没有对应的 `sys_dict_type`。改一次要动十几个文件，
+   建议升级前端时统一改成字典驱动。
+3. **没有测试层**：验证靠打真实服务的 Python 脚本，必须本机有 MySQL + Redis 才跑得起来；
+   没有 JUnit 单测，CI 只做编译打包（`mapper XML` 写错、状态机改坏这类问题拦不住）。
+   要补测试的话优先级：状态机纯逻辑 → 越权路径 → 缓存失效时序。
+4. **迁移仍是手工 SQL**：`v1.x.y_*.sql` 命名像迁移，实际靠人按顺序执行，
+   没有 flyway / liquibase，也没有 down 脚本，`v1.1.0` 还是空缺号。
+5. **钱包功能只有表与 Mapper**：`Wallet` / `WalletRecord` 没有 Service 与页面，
    要做的话重点是余额扣减的并发安全（`SELECT ... FOR UPDATE` 或乐观锁 + 流水表）。
-4. **FastJSON2 并非冗余**：它被 `FastJson2JsonRedisSerializer` 用于 Redis 值序列化，
+6. **JWT 依赖与默认密钥**：`jjwt 0.9.1` 是 2017 年的 API（`signWith(SignatureAlgorithm, String)`），
+   升级要连 `TokenService` 一起改；`application.yml` 里 `JWT_SECRET` 的兜底默认值就在仓库里，
+   生产不替换等于用公开密钥签名。
+7. **FastJSON2 并非冗余**：它被 `FastJson2JsonRedisSerializer` 用于 Redis 值序列化，
    移除需要同时把 Redis 序列化切到 Jackson，收益不大，暂不动。
-5. **Druid 监控台**：开发默认开启，生产请通过
-   `spring.datasource.druid.statViewServlet.enabled=false` 关闭（安全放行会一并收掉）。
+8. **Druid 监控台**：开发默认开启，生产请通过
+   `spring.datasource.druid.statViewServlet.enabled=false` 关闭，或至少设置强口令
+   （默认 `admin` / 空密码）。完整上线清单见 [`DEPLOY.md`](DEPLOY.md) 第七节。
+9. **图片依赖接口前缀**：上传文件存的是 `/profile/...` 相对路径，前端渲染时必须拼
+   `VUE_APP_BASE_API`（C 端已统一到 `ruoyi-app/src/utils/image.js`），
+   nginx 也要转发 `/prod-api/profile/`，否则图片 404。
 
 ---
 
 ## 八、接口文档
 
-- 在线文档：启动后访问 `/swagger-ui.html`
-- 商品管理接口文档：[`商品管理接口文档.md`](商品管理接口文档.md)
-- 部署说明：[`DEPLOY.md`](DEPLOY.md)
+- 在线文档：启动后访问 `/swagger-ui.html`，右上角分组可切
+  「闲置交易（业务）」/「系统管理（框架）」/「测试模块」（`application.yml` 的 `springdoc.group-configs`）。
+  业务 Controller 没有写 `@Operation` 注解，在线文档给出的是接口清单
+  （路径、方法、参数与返回模型），字段级含义看下面这份 markdown。
+- 商品 / 订单 / 收藏接口详细说明：[`商品管理接口文档.md`](商品管理接口文档.md)
+- 部署与上线检查清单：[`DEPLOY.md`](DEPLOY.md)
+- 数据库脚本顺序与表结构依据：[`sql/README.md`](sql/README.md)
+- 验证与压测脚本：[`scripts/README.md`](scripts/README.md)
 
 ## 九、致谢
 
