@@ -50,6 +50,8 @@
 </template>
 
 <script>
+import { withBase } from '@/utils/image'
+
 export default {
   name: 'GoodsCard',
   props: {
@@ -72,8 +74,7 @@ export default {
   },
   computed: {
     coverImage() {
-      if (this.goods.coverImage) return this.goods.coverImage
-      return ''
+      return withBase(this.goods.coverImage ? String(this.goods.coverImage).split(',')[0] : '')
     },
     coverClass() {
       const idx = (this.goods.goodsId || 0) % this.colorPalette.length

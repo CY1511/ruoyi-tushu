@@ -42,3 +42,19 @@ export function deleteGoods(id) {
     method: 'delete'
   })
 }
+
+// 下架商品（只关状态，不会把商品打回待审核）
+export function offlineGoods(id) {
+  return request({
+    url: '/app/goods/offline/' + id,
+    method: 'put'
+  })
+}
+
+// 重新上架商品（仅已过审且处于已下架状态）
+export function onlineGoods(id) {
+  return request({
+    url: '/app/goods/online/' + id,
+    method: 'put'
+  })
+}

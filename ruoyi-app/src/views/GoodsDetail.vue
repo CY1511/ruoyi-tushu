@@ -118,7 +118,7 @@
           </button>
           <button
             class="action-btn primary"
-            :disabled="goods.goodsStatus !== '1'"
+            :disabled="goods.goodsStatus !== '1' || isMine"
             @click="handleBuy"
           >
             {{ buyButtonText }}
@@ -127,17 +127,22 @@
       </section>
     </div>
 
+    <div class="loading-state" v-else-if="loadFailed">
+      <i class="el-icon-warning-outline"></i>
+      <p>商 品 不 存 在 或 已 下 架</p>
+      <div class="back-link" @click="$router.back()">— 返 回 —</div>
+    </div>
+
     <div class="loading-state" v-else>
       <i class="el-icon-loading"></i>
       <p>加 载 中</p>
     </div>
 
-    <el-image-viewer
-      v-if="showViewer"
-      :url-list="goods ? goods.imageList : []"
-      :initial-index="previewIndex"
-      @close="showViewer = false"
-    />
+    <!-- 图片预览：用 el-dialog 承载（原来写的 <el-image-viewer> 不是 element-ui 对外注册的组件，
+         渲染时报 Unknown custom element，点封面其实没有任何反应） -->
+    <el-dialog :visible.sync="showViewer" width="92%" top="8vh">
+      <img v-if="previewUrl" :src="previewUrl" class="viewer-img" alt="" />
+    </el-dialog>
   </div>
 </template>
 
@@ -145,6 +150,7 @@
 import { getGoods } from '@/api/goods'
 import { toggleFavorite, checkFavorite } from '@/api/favorite'
 import { createOrder } from '@/api/order'
+import { toImageList } from '@/utils/image'
 
 export default {
   name: 'GoodsDetail',
@@ -154,7 +160,8 @@ export default {
       isFavorited: false,
       showViewer: false,
       previewIndex: 0,
-      loading: false
+      loading: false,
+      loadFailed: false
     }
   },
   computed: {
@@ -180,7 +187,16 @@ export default {
     publishDate() {
       return this.goods?.createTime ? this.goods.createTime.split(' ')[0] : ''
     },
+    previewUrl() {
+      const list = (this.goods && this.goods.imageList) || []
+      return list[this.previewIndex] || ''
+    },
+    isMine() {
+      const uid = this.$store.state.userInfo && this.$store.state.userInfo.userId
+      return !!uid && !!this.goods && String(uid) === String(this.goods.publisherId)
+    },
     buyButtonText() {
+      if (this.isMine) return '我 发 布 的'
       const s = this.goods?.goodsStatus
       if (s === '2') return '已 被 预 订'
       if (s === '3') return '已 售 出'
@@ -189,24 +205,27 @@ export default {
     }
   },
   created() {
+    // 详情接口是公开的，路由守卫不会为已登录用户拉一次用户信息；
+    // 这里补一次，才能判断「这件商品是不是我发布的」并把购买按钮关掉。
+    if (this.$store.state.token && !this.$store.state.userInfo) {
+      this.$store.dispatch('GetUserInfo').catch(() => {})
+    }
     this.loadGoodsDetail()
   },
   methods: {
     loadGoodsDetail() {
       const id = this.$route.params.id
       this.loading = true
+      this.loadFailed = false
       getGoods(id).then(res => {
         this.goods = res.data
-        if (this.goods.coverImage) {
-          this.$set(this.goods, 'imageList', this.goods.coverImage.split(',').filter(Boolean))
-        } else {
-          this.$set(this.goods, 'imageList', [])
-        }
+        // cover_image 存的是相对路径，渲染前统一拼接口前缀（见 utils/image.js）
+        this.$set(this.goods, 'imageList', toImageList(this.goods.coverImage))
         if (this.$store.state.token) {
           this.checkFavStatus()
         }
       }).catch(() => {
-        this.$message.error('商品不存在或已下架')
+        this.loadFailed = true
       }).finally(() => { this.loading = false })
     },
     checkFavStatus() {
@@ -229,7 +248,7 @@ export default {
       }).catch(() => {})
     },
     handleBuy() {
-      if (this.goods.goodsStatus !== '1') return
+      if (this.goods.goodsStatus !== '1' || this.isMine) return
       if (!this.$store.state.token) {
         this.$router.push({ path: '/login', query: { redirect: this.$route.fullPath } })
         return
@@ -656,5 +675,17 @@ export default {
 .loading-state p {
   font-family: var(--font-serif);
   letter-spacing: 0.3em;
+}
+.loading-state .back-link {
+  margin-top: 16px;
+  font-family: var(--font-serif);
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  color: var(--vermilion);
+  cursor: pointer;
+}
+.viewer-img {
+  display: block;
+  width: 100%;
 }
 </style>

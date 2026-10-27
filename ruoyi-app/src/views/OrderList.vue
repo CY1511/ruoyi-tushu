@@ -118,6 +118,10 @@
       </div>
     </div>
 
+    <div class="load-more" v-if="orderList.length > 0 && hasMore" @click="loadMore">
+      {{ loadingMore ? '加 载 中' : '更 多 订 单' }}
+    </div>
+
     <div class="empty-state" v-if="!loading && orderList.length === 0">
       <div class="empty-mark">无</div>
       <p>尚 无 订 单</p>
@@ -135,7 +139,16 @@ export default {
       activeTab: 'buyer',
       activeStatus: null,
       orderList: [],
-      loading: false
+      total: 0,
+      pageNum: 1,
+      pageSize: 10,
+      loading: false,
+      loadingMore: false
+    }
+  },
+  computed: {
+    hasMore() {
+      return this.orderList.length < this.total
     }
   },
   created() {
@@ -144,20 +157,36 @@ export default {
   methods: {
     switchRole(role) {
       this.activeTab = role
+      this.pageNum = 1
       this.loadOrders()
     },
     switchStatus(s) {
       this.activeStatus = s
+      this.pageNum = 1
       this.loadOrders()
     },
     loadOrders() {
       this.loading = true
-      const params = {}
+      const params = { pageNum: this.pageNum, pageSize: this.pageSize }
       if (this.activeStatus !== null) params.orderStatus = this.activeStatus
       const req = this.activeTab === 'buyer' ? getBuyerOrders : getSellerOrders
       req(params).then(res => {
         this.orderList = res.rows || res.data || []
+        this.total = res.total || this.orderList.length
       }).catch(() => {}).finally(() => { this.loading = false })
+    },
+    loadMore() {
+      if (this.loadingMore) return
+      this.loadingMore = true
+      this.pageNum++
+      const params = { pageNum: this.pageNum, pageSize: this.pageSize }
+      if (this.activeStatus !== null) params.orderStatus = this.activeStatus
+      const req = this.activeTab === 'buyer' ? getBuyerOrders : getSellerOrders
+      req(params).then(res => {
+        this.orderList = [...this.orderList, ...(res.rows || res.data || [])]
+        this.total = res.total || this.orderList.length
+      }).catch(() => { this.pageNum-- })
+        .finally(() => { this.loadingMore = false })
     },
     statusText(s) {
       return { '0': '待确认', '1': '交易中', '2': '已完成', '3': '已取消' }[s] || '未知'
@@ -483,6 +512,15 @@ export default {
   color: var(--ink-soft);
 }
 
+.load-more {
+  text-align: center;
+  padding: 16px 0 4px;
+  font-family: var(--font-serif);
+  font-size: 12px;
+  letter-spacing: 0.3em;
+  color: var(--ink-mute);
+  cursor: pointer;
+}
 .empty-state {
   text-align: center;
   padding: 60px 20px;

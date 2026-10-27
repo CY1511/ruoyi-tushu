@@ -34,11 +34,11 @@ export function getUserInfo() {
   })
 }
 
-// 当前用户信息（C端）
-export function getAppUserInfo() {
+// 退出登录（服务端注销，让当前 token 立即失效）
+export function logout() {
   return request({
-    url: '/app/user/info',
-    method: 'get'
+    url: '/logout',
+    method: 'post'
   })
 }
 

@@ -60,7 +60,7 @@
         class="goods-row"
       >
         <div class="row-cover">
-          <img v-if="goods.coverImage" :src="goods.coverImage" alt="" />
+          <img v-if="goods.coverImage" :src="coverSrc(goods)" alt="" />
           <div v-else class="cover-empty">摊</div>
           <div class="row-stamp" :class="stampClass(goods.goodsStatus)">{{ statusText(goods.goodsStatus) }}</div>
         </div>
@@ -82,14 +82,24 @@
             @click="handleOffShelf(goods)"
           >下 架</button>
           <button
+            class="action-btn back-btn"
+            v-if="goods.goodsStatus === '4' && goods.auditStatus === '1'"
+            @click="handleOnSale(goods)"
+          >上 架</button>
+          <button
             class="action-btn del-btn"
-            v-if="goods.goodsStatus === '4'"
+            v-if="goods.goodsStatus === '0' || goods.goodsStatus === '4'"
             @click="handleDelete(goods)"
           >删 除</button>
+          <span class="action-tip" v-if="goods.goodsStatus === '0'">待审核</span>
           <span class="action-tip" v-if="goods.goodsStatus === '2'">交易中</span>
           <span class="action-tip" v-if="goods.goodsStatus === '3'">已售出</span>
         </div>
       </div>
+    </div>
+
+    <div class="load-more" v-if="goodsList.length > 0 && hasMore" @click="loadMore">
+      {{ loadingMore ? '加 载 中' : '更 多 摊 位' }}
     </div>
 
     <div class="empty-state" v-if="!loading && goodsList.length === 0">
@@ -106,8 +116,9 @@
 </template>
 
 <script>
-import { updateGoods, deleteGoods } from '@/api/goods'
+import { deleteGoods, offlineGoods, onlineGoods } from '@/api/goods'
 import { getMyGoods } from '@/api/user'
+import { withBase } from '@/utils/image'
 
 export default {
   name: 'MyGoods',
@@ -116,25 +127,50 @@ export default {
       activeTab: '',
       goodsList: [],
       total: 0,
-      loading: false
+      pageNum: 1,
+      pageSize: 10,
+      loading: false,
+      loadingMore: false
+    }
+  },
+  computed: {
+    hasMore() {
+      return this.goodsList.length < this.total
     }
   },
   created() {
     this.loadGoods()
   },
   methods: {
+    coverSrc(goods) {
+      return withBase(goods.coverImage ? String(goods.coverImage).split(',')[0] : '')
+    },
     switchTab(tab) {
       this.activeTab = tab
+      this.pageNum = 1
       this.loadGoods()
+    },
+    buildParams() {
+      const params = { pageNum: this.pageNum, pageSize: this.pageSize }
+      if (this.activeTab) params.goodsStatus = this.activeTab
+      return params
     },
     loadGoods() {
       this.loading = true
-      const params = {}
-      if (this.activeTab) params.goodsStatus = this.activeTab
-      getMyGoods(params).then(res => {
+      getMyGoods(this.buildParams()).then(res => {
         this.goodsList = res.rows || []
         this.total = res.total || 0
       }).catch(() => {}).finally(() => { this.loading = false })
+    },
+    loadMore() {
+      if (this.loadingMore) return
+      this.loadingMore = true
+      this.pageNum++
+      getMyGoods(this.buildParams()).then(res => {
+        this.goodsList = [...this.goodsList, ...(res.rows || [])]
+        this.total = res.total || 0
+      }).catch(() => { this.pageNum-- })
+        .finally(() => { this.loadingMore = false })
     },
     stampClass(s) {
       return {
@@ -150,13 +186,25 @@ export default {
       return t ? t.split(' ')[0] : '—'
     },
     handleOffShelf(goods) {
-      this.$confirm('确认下架此商品吗？', '下 架', {
+      this.$confirm('确认下架此商品吗？下架后不再展示给其他同学，随时可以重新上架。', '下 架', {
         confirmButtonText: '确 认',
         cancelButtonText: '取 消',
         type: 'warning'
       }).then(() => {
-        updateGoods({ goodsId: goods.goodsId, goodsStatus: '4' }).then(() => {
+        offlineGoods(goods.goodsId).then(() => {
           this.$message.success('已下架')
+          this.loadGoods()
+        }).catch(() => {})
+      }).catch(() => {})
+    },
+    handleOnSale(goods) {
+      this.$confirm('确认重新上架此商品吗？', '上 架', {
+        confirmButtonText: '确 认',
+        cancelButtonText: '取 消',
+        type: 'info'
+      }).then(() => {
+        onlineGoods(goods.goodsId).then(() => {
+          this.$message.success('已上架')
           this.loadGoods()
         }).catch(() => {})
       }).catch(() => {})
@@ -406,6 +454,8 @@ export default {
 .action-btn:active { background: var(--ink); color: var(--paper); }
 .action-btn.off-btn { color: var(--gold); border-color: var(--gold); }
 .action-btn.off-btn:active { background: var(--gold); color: var(--paper); }
+.action-btn.back-btn { color: var(--moss); border-color: var(--moss); }
+.action-btn.back-btn:active { background: var(--moss); color: var(--paper); }
 .action-btn.del-btn { color: var(--vermilion); border-color: var(--vermilion); }
 .action-btn.del-btn:active { background: var(--vermilion); color: var(--paper); }
 .action-tip {
@@ -420,6 +470,15 @@ export default {
   text-align: center;
   padding: 60px 20px;
   color: var(--ink-fade);
+}
+.load-more {
+  text-align: center;
+  padding: 16px 0 4px;
+  font-family: var(--font-serif);
+  font-size: 12px;
+  letter-spacing: 0.3em;
+  color: var(--ink-mute);
+  cursor: pointer;
 }
 .empty-mark {
   font-family: var(--font-serif);
