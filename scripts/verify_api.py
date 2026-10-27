@@ -8,6 +8,7 @@ import json
 import socket
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -32,6 +33,8 @@ DB_PASSWORD = os.environ.get("DB_PASSWORD", "")
 MYSQL = os.environ.get("MYSQL_BIN", "mysql")
 REDIS_HOST = os.environ.get("REDIS_HOST", "127.0.0.1")
 REDIS_PORT = int(os.environ.get("REDIS_PORT", "6379"))
+# 抢单用例的并发线程数（真并发，见【8】）
+GRAB_THREADS = int(os.environ.get("GRAB_THREADS", "8"))
 
 PASS, FAIL = [], []
 
@@ -137,6 +140,21 @@ def login(username, password, token_base=BASE):
     uuid, code = captcha()
     return http("POST", "/login", {"username": username, "password": password,
                                    "code": code, "uuid": uuid}, base=token_base)
+
+
+def publish_and_audit(admin_token, seller_token, name, price=20.00, category_id=1):
+    """发一件新商品并让管理员审核通过，返回 goodsId（多个用例的公共前置）"""
+    r = http("POST", "/app/goods", {"goodsName": name, "categoryId": category_id,
+                                    "price": price, "qualityLevel": "九成新",
+                                    "description": "验证脚本自动创建"}, token=seller_token)
+    if r.get("code") != 200:
+        print("  [SETUP FAIL] 创建测试商品失败 -> %s" % r.get("msg"))
+        sys.exit(1)
+    new_id = sql("select goods_id from idle_goods where goods_name='%s' "
+                 "order by goods_id desc limit 1" % name)
+    http("PUT", "/system/goods/audit", {"goodsId": int(new_id), "auditStatus": "1",
+                                        "auditRemark": "脚本自动通过"}, token=admin_token)
+    return int(new_id)
 
 
 print("=" * 70)
@@ -298,21 +316,121 @@ check("GET /system/order/nextStatus 终态返回空选项",
       "data=%s" % r.get("data"))
 
 # ---------------------------------------------------------------- 8. 并发抢单
-print("\n【8】并发下单（条件更新抢单）")
+print("\n【8】并发抢单（%d 个线程同一瞬间下单）" % GRAB_THREADS)
 sql("update idle_goods set goods_status='1', audit_status='1' where goods_id=%s" % gid)
 sql("delete from idle_order where goods_id=%s" % gid)
-before = sql("select count(*) from idle_order where goods_id=%s" % gid)
-ok_cnt, err_cnt = 0, 0
-for i in range(5):
+redis_cmd("DEL", "idleGoods:%s" % gid)
+
+barrier = threading.Barrier(GRAB_THREADS)
+codes = []
+codes_lock = threading.Lock()
+
+
+def grab():
+    barrier.wait()          # 所有线程在这里对齐，才是真正的并发
     rr = http("POST", "/app/order", {"goodsId": int(gid)}, token=buyer_token)
-    if rr.get("code") == 200:
-        ok_cnt += 1
-    else:
-        err_cnt += 1
+    with codes_lock:
+        codes.append(rr.get("code"))
+
+
+threads = [threading.Thread(target=grab) for _ in range(GRAB_THREADS)]
+for t in threads:
+    t.start()
+for t in threads:
+    t.join()
+
+ok_cnt = sum(1 for c in codes if c == 200)
 after_cnt = sql("select count(*) from idle_order where goods_id=%s" % gid)
-check("同一商品 5 次下单只成功 1 单",
-      ok_cnt == 1 and err_cnt == 4 and after_cnt == "1",
-      "成功=%s 失败=%s 库中订单=%s" % (ok_cnt, err_cnt, after_cnt))
+check("同一商品 %d 路并发下单只成功 1 单" % GRAB_THREADS,
+      ok_cnt == 1 and after_cnt == "1",
+      "成功=%s 状态码分布=%s 库中订单=%s" % (ok_cnt, sorted(set(codes)), after_cnt))
+g_st = sql("select goods_status from idle_goods where goods_id=%s" % gid)
+check("并发后商品停在 2 已预订，没有被重复锁定", g_st == "2", g_st)
+
+# ---------------------------------------------------------------- 9. 收藏闭环
+print("\n【9】收藏（C 端切换 / 列表 / 管理端查询 / 删商品级联）")
+g2 = publish_and_audit(admin_token, seller_token, "编译原理（第二版）")
+r = http("POST", "/app/favorite/%s" % g2, token=buyer_token)
+check("POST /app/favorite/{goodsId} 收藏成功",
+      r.get("code") == 200 and r.get("data") is True, "data=%s" % r.get("data"))
+cnt = sql("select count(*) from idle_favorite where goods_id=%s" % g2)
+check("收藏已落库", cnt == "1", "count=%s" % cnt)
+r = http("GET", "/app/favorite/check/%s" % g2, token=buyer_token)
+check("GET /app/favorite/check 返回已收藏", r.get("data") is True, "data=%s" % r.get("data"))
+r = http("GET", "/app/favorite/list", token=buyer_token)
+ids = [str(x.get("goodsId")) for x in (r.get("rows") or [])]
+check("GET /app/favorite/list 能查到该商品", str(g2) in ids, "rows=%s" % ids)
+r = http("GET", "/system/favorite/list?goodsId=%s" % g2, token=admin_token)
+check("管理端 GET /system/favorite/list 按商品筛选",
+      r.get("code") == 200 and int(r.get("total") or 0) >= 1, "total=%s" % r.get("total"))
+
+# 删除商品必须把收藏一起带走：idle_favorite 没有外键，留着就是收藏列表里的空白行
+r = http("DELETE", "/app/goods/%s" % g2, token=seller_token)
+cnt = sql("select count(*) from idle_favorite where goods_id=%s" % g2)
+check("删除商品后其收藏记录被级联清理",
+      r.get("code") == 200 and cnt == "0", "msg=%s 剩余收藏=%s" % (r.get("msg"), cnt))
+
+r = http("DELETE", "/app/goods/%s" % gid, token=seller_token)
+check("有交易记录的商品拒绝删除（避免订单指向空商品）",
+      r.get("code") == 500 and "交易记录" in str(r.get("msg")), "msg=%s" % r.get("msg"))
+
+# ---------------------------------------------------------------- 10. 下架 / 上架闭环
+print("\n【10】C 端下架与上架（下架不应把商品打回待审核）")
+g3 = publish_and_audit(admin_token, seller_token, "算法导论")
+r = http("PUT", "/app/goods/offline/%s" % g3, token=seller_token)
+st = sql("select concat(goods_status,'#',audit_status) from idle_goods where goods_id=%s" % g3)
+check("下架后 goods_status=4 且 audit_status 仍是 1（没有被打回待审核）",
+      r.get("code") == 200 and st == "4#1", "状态=%s msg=%s" % (st, r.get("msg")))
+r = http("PUT", "/app/goods/offline/%s" % g3, token=seller_token)
+check("重复下架被状态守卫拦截", r.get("code") == 500 and "上架中" in str(r.get("msg")),
+      "msg=%s" % r.get("msg"))
+r = http("PUT", "/app/goods/online/%s" % g3, token=seller_token)
+st = sql("select goods_status from idle_goods where goods_id=%s" % g3)
+check("重新上架成功，goods_status 回到 1",
+      r.get("code") == 200 and st == "1", "状态=%s msg=%s" % (st, r.get("msg")))
+r = http("PUT", "/app/goods", {"goodsId": int(g3), "price": 33.00}, token=seller_token)
+st = sql("select concat(goods_status,'#',audit_status) from idle_goods where goods_id=%s" % g3)
+check("修改商品信息仍按规则重新进入待审核（与下架区分开）",
+      r.get("code") == 200 and st == "0#0", "状态=%s msg=%s" % (st, r.get("msg")))
+r = http("PUT", "/app/goods/online/%s" % g3, token=seller_token)
+check("未过审商品不能直接上架", r.get("code") == 500 and "审核" in str(r.get("msg")),
+      "msg=%s" % r.get("msg"))
+# 管理员驳回后的形态：未过审 + 已下架，同样不能上架（走的是审核那条守卫）
+sql("update idle_goods set audit_status='2', goods_status='4' where goods_id=%s" % g3)
+r = http("PUT", "/app/goods/online/%s" % g3, token=seller_token)
+check("被驳回的商品不能直接上架", r.get("code") == 500 and "审核" in str(r.get("msg")),
+      "msg=%s" % r.get("msg"))
+# 重新过审后，"已下架 -> 上架"这条正常分支要能走通
+sql("update idle_goods set audit_status='1' where goods_id=%s" % g3)
+r = http("PUT", "/app/goods/online/%s" % g3, token=seller_token)
+st = sql("select goods_status from idle_goods where goods_id=%s" % g3)
+check("过审的已下架商品可以直接上架", r.get("code") == 200 and st == "1",
+      "状态=%s msg=%s" % (st, r.get("msg")))
+r = http("PUT", "/app/goods/online/%s" % g3, token=seller_token)
+check("非下架状态调用上架被状态守卫拦住", r.get("code") == 500 and "已下架" in str(r.get("msg")),
+      "msg=%s" % r.get("msg"))
+
+# ---------------------------------------------------------------- 11. 分类缓存失效
+print("\n【11】分类缓存 idleCategory:all 的写路径失效")
+http("GET", "/app/category/tree")
+hit = redis_cmd("EXISTS", "idleCategory:all")
+check("读接口回填分类缓存", hit == 1, "EXISTS=%s" % hit)
+r = http("POST", "/system/category", {"categoryName": "验证专用分类", "parentId": 0,
+                                      "status": "0", "sortOrder": 99}, token=admin_token)
+cid = sql("select category_id from idle_category where category_name='验证专用分类' limit 1")
+hit = redis_cmd("EXISTS", "idleCategory:all")
+check("新增分类后缓存被主动删除",
+      r.get("code") == 200 and cid and hit == 0, "categoryId=%s EXISTS=%s" % (cid, hit))
+http("GET", "/app/category/tree")
+r = http("PUT", "/system/category", {"categoryId": int(cid), "categoryName": "验证专用分类2",
+                                     "parentId": 0, "status": "0", "sortOrder": 99},
+         token=admin_token)
+hit = redis_cmd("EXISTS", "idleCategory:all")
+check("修改分类后缓存被主动删除", r.get("code") == 200 and hit == 0, "EXISTS=%s" % hit)
+r = http("DELETE", "/system/category/%s" % cid, token=admin_token)
+left = sql("select count(*) from idle_category where category_id=%s" % cid)
+check("删除分类后缓存被删除且数据行消失",
+      r.get("code") == 200 and left == "0", "剩余=%s msg=%s" % (left, r.get("msg")))
 
 print("\n" + "=" * 70)
 print("通过 %d 项，失败 %d 项" % (len(PASS), len(FAIL)))
@@ -321,3 +439,5 @@ if FAIL:
     for f in FAIL:
         print("  - " + f)
 print("=" * 70)
+# 失败必须让进程非 0 退出，否则 CI / 脚本调用方看不到红
+sys.exit(1 if FAIL else 0)

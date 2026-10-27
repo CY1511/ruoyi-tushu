@@ -3,6 +3,7 @@
 import json
 import socket
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -114,7 +115,13 @@ print("缓存 cache-aside 验证")
 print("=" * 70)
 admin = login("admin", "admin123")
 seller = login("sellertest", "abc123456")
-gid = sql("select goods_id from idle_goods order by goods_id desc limit 1")
+# 拿卖家自己的商品来验证，避免动到别人的数据；没有则先跑 verify_api.py 建数据
+gid = sql("select g.goods_id from idle_goods g "
+          "join sys_user u on u.user_id = g.publisher_id and u.user_name = 'sellertest' "
+          "order by g.goods_id desc limit 1")
+if not gid:
+    print("[SETUP FAIL] 没找到 sellertest 的商品，请先执行 verify_api.py 准备测试数据")
+    sys.exit(1)
 gkey = "idleGoods:" + gid
 ckey = "idleCategory:all"
 sql("update idle_goods set audit_status='1', goods_status='1' where goods_id=%s" % gid)
@@ -133,9 +140,12 @@ check("二次访问走缓存且内容一致",
       "%s vs %s" % (len(r1["data"]), len(r2.get("data") or [])))
 before_ttl = rcmd("TTL", ckey)
 time.sleep(4)
-check("确认命中缓存（TTL 在自然衰减，未被重建）",
-      isinstance(rcmd("TTL", ckey), int) and rcmd("TTL", ckey) <= before_ttl,
-      "before=%s after=%s" % (before_ttl, rcmd("TTL", ckey)))
+after_ttl = rcmd("TTL", ckey)
+# 只断言"TTL 变小了"不够：key 不存在时 TTL 返回 -2，同样算变小，
+# 缓存功能整个删掉这条也照样绿。必须要求 key 还在、且只是自然衰减。
+check("二次访问命中缓存（key 仍在且 TTL 只自然衰减，未被重建）",
+      isinstance(before_ttl, int) and isinstance(after_ttl, int) and 0 < after_ttl < before_ttl,
+      "before=%s after=%s" % (before_ttl, after_ttl))
 r = http("PUT", "/system/category", {"categoryId": 1, "categoryName": "公共课教材", "status": "0"}, token=admin)
 check("改分类成功且缓存被主动删除", r.get("code") == 200 and rcmd("EXISTS", ckey) == 0,
       "msg=%s EXISTS=%s" % (r.get("msg"), rcmd("EXISTS", ckey)))
@@ -161,7 +171,13 @@ check("卖家改商品后缓存被删（TTL 未回落说明没被重建）",
       r.get("code") == 200 and rcmd("EXISTS", gkey) == 0,
       "msg=%s EXISTS=%s beforeTTL=%s" % (r.get("msg"), rcmd("EXISTS", gkey), before))
 sql("update idle_goods set audit_status='1', goods_status='1' where goods_id=%s" % gid)
-
+new_price = sql("select price from idle_goods where goods_id=%s" % gid)
+r3 = http("GET", "/app/goods/%s" % gid)
+got_price = (r3.get("data") or {}).get("price")
+# 缓存删掉只是手段，真正的验收标准是"下一次读到的是新值"
+check("改价后立即再读，拿到的是新价格（缓存里没有旧值残留）",
+      got_price is not None and abs(float(got_price) - float(new_price)) < 0.001,
+      "接口返回=%s 库中=%s" % (got_price, new_price))
 http("GET", "/app/goods/%s" % gid)
 r = http("PUT", "/system/goods/offline/%s" % gid, token=admin)
 check("管理员下架后缓存被删", r.get("code") == 200 and rcmd("EXISTS", gkey) == 0,
@@ -178,3 +194,5 @@ print("通过 %d 项，失败 %d 项" % (len(PASS), len(FAIL)))
 for f in FAIL:
     print("  失败: " + f)
 print("=" * 70)
+# 失败要反映到进程退出码，否则调用方 / CI 看不出来
+sys.exit(1 if FAIL else 0)
