@@ -116,9 +116,6 @@ public class SecurityConfig
                 permitAllUrl.getUrls().forEach(url -> requests.requestMatchers(url).permitAll());
                 // 对于登录login 注册register 验证码captchaImage 允许匿名访问
                 requests.requestMatchers("/login", "/register", "/captchaImage").permitAll()
-                    .requestMatchers("/user/login", "/user/register").permitAll()
-                    .requestMatchers("/book/list", "/book/detail", "/book/hot", "/book/recommend").permitAll()
-                    .requestMatchers("/category/list", "/course/list").permitAll()
                     // 静态资源，可匿名访问
                     .requestMatchers(HttpMethod.GET, "/", "/*.html", "/**.html", "/**.css", "/**.js", "/profile/**").permitAll()
                     // 接口文档与 Druid 监控台：只有开关打开时才放行，避免生产环境裸奔
