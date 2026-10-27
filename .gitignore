@@ -52,6 +52,13 @@ slides_workspace/
 node_modules/
 *.iml
 
+# Python 验证脚本的字节码缓存
+__pycache__/
+*.pyc
+
+# 本地上传目录（ruoyi.profile 默认 ./uploadPath），不要把手上的图传进仓库
+uploadPath/
+
 # 本地一键启动脚本：内含本机数据库口令等环境信息，只在本机使用，不入库
 start-dev.bat
 stop-dev.bat

@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  backend:
+    name: 后端编译打包
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 准备 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      # 只做编译打包（干净检出，不会有本地那种 target 里残留旧 Mapper XML 的问题）。
+      # 运行期的事这个工作流管不了：验证脚本要连 MySQL + Redis，仍需本机跑，见 scripts/README.md
+      - name: Maven package
+        run: mvn -B -ntp -DskipTests package
+
+      - name: 确认产物
+        run: test -f ruoyi-admin/target/ruoyi-admin.jar && ls -l ruoyi-admin/target/ruoyi-admin.jar
+
+  scripts:
+    name: 验证脚本语法
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 准备 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # 脚本只用标准库，这里至少保证改坏的 Python 能立刻被发现（真跑还要本机 MySQL + Redis）
+      - name: 编译检查
+        run: python -m compileall -q scripts
+
+      - name: SQL 脚本存在性检查
+        run: |
+          for f in sql/ry_20260417.sql sql/quartz.sql sql/v1.0.0_business_tables.sql \
+                   sql/v1.0.1_business_index.sql sql/v1.2.0_order_status_log.sql \
+                   sql/v1.3.0_business_menu.sql sql/v1.4.0_drop_legacy_and_index.sql; do
+            test -f "$f" || { echo "缺少 $f"; exit 1; }
+          done

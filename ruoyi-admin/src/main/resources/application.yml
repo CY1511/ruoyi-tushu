@@ -34,7 +34,8 @@ server:
 # 日志配置
 logging:
   level:
-    com.ruoyi: debug
+    # 开发默认 debug（MyBatis 会打印每条 SQL）；生产用 LOG_LEVEL_APP=info 启动关掉
+    com.ruoyi: ${LOG_LEVEL_APP:debug}
     org.springframework: warn
 
 # 用户配置
@@ -131,6 +132,14 @@ springdoc:
     path: /swagger-ui.html
     tags-sorter: alpha
   group-configs:
+    - group: 'idle'
+      display-name: '闲置交易（业务）'
+      paths-to-match: '/**'
+      packages-to-scan: com.ruoyi.web.controller.idle
+    - group: 'system'
+      display-name: '系统管理（框架）'
+      paths-to-match: '/**'
+      packages-to-scan: com.ruoyi.web.controller.system
     - group: 'default'
       display-name: '测试模块'
       paths-to-match: '/**'

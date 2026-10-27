@@ -1,0 +1,14 @@
+# 只约束必须跨平台正确的脚本，不做全局换行符归一化（那会让整库产生无意义的空白 diff）
+*.sh   text eol=lf
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+
+# 二进制资源不要做任何转换
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.jar  binary
+*.docx binary
+*.pdf  binary
