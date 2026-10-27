@@ -116,7 +116,7 @@ mysql -uroot -p --default-character-set=utf8mb4 ry_tushu < sql/v1.4.0_drop_legac
 | `DB_HOST` / `DB_PORT` | `localhost` / `3306` | 数据库地址 |
 | `DB_NAME` | `ry_tushu` | 库名 |
 | `DB_USERNAME` / `DB_PASSWORD` | `root` / 空 | 账号密码 |
-| `JWT_SECRET` | 内置默认值 | **生产必须替换**（默认值在仓库里，等于公开） |
+| `JWT_SECRET` | 内置默认值 | **生产必须替换**（默认值在仓库里，等于公开）；HS512 要求 **≥ 64 字节** |
 | `SWAGGER_ENABLED` | `true` | 生产建议 `false`，关掉后文档/Druid 一律 401 |
 | `LOG_LEVEL_APP` | `debug` | 生产建议 `info`；`debug` 会把每条 SQL 打进日志 |
 | `DRUID_USERNAME` / `DRUID_PASSWORD` | `admin` / 空 | 用监控台就必须设强口令 |
@@ -268,9 +268,20 @@ cd ruoyi-app && npm install && npm run dev
 
 ## 七、已知技术债（后续计划）
 
-> 已了结的一项：**两代业务模型并存**。`book/course/cart/orders/user` 一套（无管理端页面、
-> 无前端调用，但接口全部可路由，其中 `/user/login` 是明文口令比对、`/user/update` 无归属校验）
-> 已在 v1.4.0 连同代码与表一起删除，详见 [`sql/README.md`](sql/README.md) 第三节。
+> 已了结的两项：
+>
+> 1. **两代业务模型并存**。`book/course/cart/orders/user` 一套（无管理端页面、
+>    无前端调用，但接口全部可路由，其中 `/user/login` 是明文口令比对、`/user/update` 无归属校验）
+>    已在 v1.4.0 连同代码与表一起删除，详见 [`sql/README.md`](sql/README.md) 第三节。
+> 2. **jjwt 0.9.1 + Jackson 2/3 双栈**。Spring Boot 4 把 Jackson 换到 3.x（groupId 变成
+>    `tools.jackson`），但 `jjwt 0.9.1`（2017 年的单一 jar）会传递依赖
+>    `com.fasterxml.jackson.core:jackson-databind:2.x`，导致 classpath 里同时躺着两套 databind。
+>    已升级到 `jjwt 0.12.6` 并把序列化适配器从 `jjwt-jackson` 换成 `jjwt-gson` ——
+>    后者只依赖 gson，不碰 Jackson，Jackson 2 的 `databind` / `core` 因此彻底消失
+>    （只留 `jackson-annotations 2.21`，那是 Jackson 3 自己的传递依赖）。
+>    同时 `TokenService` 从 `signWith(SignatureAlgorithm, String)` + `parseClaimsJws`
+>    改成 `signWith(SecretKey, SIG.HS512)` + `parser().verifyWith(...).parseSignedClaims(...)`。
+>    验证方式：`mvn -o -pl ruoyi-common dependency:tree | grep jackson` 应当只剩 `tools.jackson`。
 
 1. **前端技术栈偏旧**：Vue 2.6 已于 2023 年底停止维护，中期建议升级 Vue 3 + Element Plus + Vite。
    顺带能解决两个前端各写一份 `request` / token / 登录态的问题（`ruoyi-ui` 用 Cookie、`ruoyi-app` 用 localStorage）。
@@ -284,9 +295,10 @@ cd ruoyi-app && npm install && npm run dev
    没有 flyway / liquibase，也没有 down 脚本，`v1.1.0` 还是空缺号。
 5. **钱包功能只有表与 Mapper**：`Wallet` / `WalletRecord` 没有 Service 与页面，
    要做的话重点是余额扣减的并发安全（`SELECT ... FOR UPDATE` 或乐观锁 + 流水表）。
-6. **JWT 依赖与默认密钥**：`jjwt 0.9.1` 是 2017 年的 API（`signWith(SignatureAlgorithm, String)`），
-   升级要连 `TokenService` 一起改；`application.yml` 里 `JWT_SECRET` 的兜底默认值就在仓库里，
-   生产不替换等于用公开密钥签名。
+6. **JWT 默认密钥在仓库里**：`application.yml` 里 `JWT_SECRET` 的兜底值是仓库中的明文，
+   生产不替换等于用公开密钥签名。另外 HS512 要求密钥至少 64 字节，`TokenService`
+   启动时会校验长度并 fail-fast —— 自定义 `JWT_SECRET` 时别塞个短口令进去，
+   生成方式见 [`DEPLOY.md`](DEPLOY.md) 的密钥生成一节。
 7. **FastJSON2 并非冗余**：它被 `FastJson2JsonRedisSerializer` 用于 Redis 值序列化，
    移除需要同时把 Redis 序列化切到 Jackson，收益不大，暂不动。
 8. **Druid 监控台**：开发默认开启，生产请通过

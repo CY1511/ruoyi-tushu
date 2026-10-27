@@ -47,15 +47,15 @@ done
 |---|---|---|
 | `DB_HOST` / `DB_PORT` / `DB_NAME` | `localhost` / `3306` / `ry_tushu` | 按需 |
 | `DB_USERNAME` / `DB_PASSWORD` | `root` / 空 | **是** |
-| `JWT_SECRET` | 内置开发默认值 | **是**（不改的话任何人都能用公开默认值伪造令牌） |
+| `JWT_SECRET` | 内置开发默认值 | **是**（不改的话任何人都能用公开默认值伪造令牌；且 HS512 要求 **至少 64 字节**，短了应用直接启动失败） |
 | `SWAGGER_ENABLED` | `true` | **改成 `false`** |
 | `DRUID_USERNAME` / `DRUID_PASSWORD` | `admin` / 空 | **是**（关掉监控台也要设，见下） |
 | `LOG_LEVEL_APP` | `debug`（会打印全部 SQL） | **改成 `info`** |
 
-生成一个高强度密钥：
+生成一个高强度密钥（**至少 64 字节**，`base64 64` 出来是 88 个字符，够用）：
 
 ```bash
-openssl rand -base64 48
+openssl rand -base64 64
 ```
 
 ---

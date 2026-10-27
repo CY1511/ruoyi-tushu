@@ -28,7 +28,7 @@
         <commons.io.version>2.22.0</commons.io.version>
         <poi.version>4.1.2</poi.version>
         <velocity.version>2.3</velocity.version>
-        <jwt.version>0.9.1</jwt.version>
+        <jwt.version>0.12.6</jwt.version>
         <jaxb-api.version>2.3.1</jaxb-api.version>
         <springdoc.version>3.0.3</springdoc.version>
     </properties>
@@ -121,11 +121,29 @@
                 <version>${fastjson.version}</version>
             </dependency>
 
-            <!-- Token生成与解析-->
+            <!-- Token生成与解析（0.12.x 起拆成 api / impl / 序列化适配器三个坐标） -->
             <dependency>
                 <groupId>io.jsonwebtoken</groupId>
-                <artifactId>jjwt</artifactId>
+                <artifactId>jjwt-api</artifactId>
                 <version>${jwt.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-impl</artifactId>
+                <version>${jwt.version}</version>
+                <scope>runtime</scope>
+            </dependency>
+            <!--
+                序列化适配器用 gson，不用官方默认的 jjwt-jackson。
+                原因：jjwt-jackson 会传递依赖 com.fasterxml.jackson.core:jackson-databind 2.x，
+                而 Spring Boot 4 已经切到 Jackson 3（groupId 变成 tools.jackson）。
+                用 jackson 适配器会让 classpath 里同时存在 Jackson 2 和 Jackson 3 两套 databind。
+            -->
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-gson</artifactId>
+                <version>${jwt.version}</version>
+                <scope>runtime</scope>
             </dependency>
 
             <!-- 验证码 -->

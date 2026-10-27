@@ -1,9 +1,11 @@
 package com.ruoyi.framework.web.service;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import javax.crypto.SecretKey;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,7 +23,8 @@ import com.ruoyi.common.utils.ip.IpUtils;
 import com.ruoyi.common.utils.uuid.IdUtils;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
 import jakarta.servlet.http.HttpServletRequest;
 
 /**
@@ -42,9 +45,32 @@ public class TokenService
     @Value("${token.secret}")
     private String secret;
 
+    // 由 secret 派生出的签名密钥，启动时构建一次，避免每次签发/校验都做一次字节转换
+    private SecretKey signingKey;
+
     // 令牌有效期（默认30分钟）
     @Value("${token.expireTime}")
     private int expireTime;
+
+    /**
+     * 构建 HS512 签名密钥。
+     *
+     * <p>jjwt 0.12.x 起会用 {@code WeakKeyException} 拒绝长度不足的密钥 —— HS512 要求至少
+     * 512 bit（64 字节）的密钥材料。这里提前校验并给出可读的报错，避免部署时只拿到一条
+     * 看不出所以然的堆栈。</p>
+     */
+    @PostConstruct
+    public void initSigningKey()
+    {
+        byte[] keyBytes = secret == null ? new byte[0] : secret.getBytes(StandardCharsets.UTF_8);
+        if (keyBytes.length < 64)
+        {
+            throw new IllegalStateException(String.format(
+                    "token.secret 长度不足：HS512 要求至少 64 字节（512 bit），当前只有 %d 字节。"
+                            + "请通过环境变量 JWT_SECRET 注入至少 64 字节的随机密钥。", keyBytes.length));
+        }
+        this.signingKey = Keys.hmacShaKeyFor(keyBytes);
+    }
 
     protected static final long MILLIS_SECOND = 1000;
 
@@ -179,8 +205,8 @@ public class TokenService
     private String createToken(Map<String, Object> claims)
     {
         String token = Jwts.builder()
-                .setClaims(claims)
-                .signWith(SignatureAlgorithm.HS512, secret).compact();
+                .claims(claims)
+                .signWith(signingKey, Jwts.SIG.HS512).compact();
         return token;
     }
 
@@ -193,9 +219,10 @@ public class TokenService
     private Claims parseToken(String token)
     {
         return Jwts.parser()
-                .setSigningKey(secret)
-                .parseClaimsJws(token)
-                .getBody();
+                .verifyWith(signingKey)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
     }
 
     /**
